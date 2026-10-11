@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>k2mod</AssemblyName>
+    <RootNamespace>K2ModCli</RootNamespace>
+    <Version>0.1.0</Version>
+    <Product>Kohan II Mod Manager</Product>
+    <Copyright>Copyright (c) 2026 Ensrick. MIT License.</Copyright>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Nullable>disable</Nullable>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Core\*.cs" Link="Core\%(Filename)%(Extension)" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>K2ModManager</AssemblyName>
+    <RootNamespace>K2ModManager</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>0.1.0</Version>
+    <Product>Kohan II Mod Manager</Product>
+    <AssemblyTitle>Kohan II Mod Manager</AssemblyTitle>
+    <Copyright>Copyright (c) 2026 Ensrick. MIT License.</Copyright>
+    <Nullable>disable</Nullable>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Core\*.cs" Link="Core\%(Filename)%(Extension)" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+</Project>
