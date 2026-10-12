@@ -2,6 +2,32 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.1.0-beta.5] - unreleased
+
+### Added
+- Game files code (fingerprint): a short code such as `7F3A-91C2` for the game data an install
+  actually loads, so a group can check before a multiplayer match that everyone's game loads the
+  same data. The game's join check compares archive stamps only, never loose files in
+  `Documents\Kohan2\data`, so players with different hand-installed files could join each other
+  and desync at the start. The code is made from the SHA-256 of `k2.exe`, the identity of
+  `Data.rwd` and `Music.rwd` (stamp, length, SHA-256 of the directory; never hashed whole), and
+  the SHA-256 of the copy the game uses of every file mods and folder depots add or change, with
+  the load order worked out from the game's own startup scripts (priority, then add order, last
+  wins). Saves, films, screenshots, settings, logs and readmes are left out by the same rules as
+  hand-installed mod detection, and so are files byte-identical to the game's own copy, so the
+  same mod gives the same code installed loose, packed into an `.rwd`, or from a `.k2mod`.
+  Launcher: "Game files: XXXX-XXXX" under the game folder with **Copy** and **Details...** (save
+  a report, compare with another player's report in plain words), worked out again in the
+  background after every change and when the window comes back to the front. CLI:
+  `k2mod fingerprint [--report <file>] [--compare <file>]` (exit code 0 same, 1 different, 2
+  unreadable report). Reports hold no absolute paths or user names. Definition in
+  `docs/FINGERPRINT.md`; `tests/fingerprint.ps1` checks it on fake game folders (loose, packed,
+  `.rwd` and `.k2mod` installs give the same code; one changed byte changes it and is named;
+  mod order counts only for files two mods both change with different content; the player's
+  own files do not count). On real data, a copy of a hand-installed Immortals 2.1 matches the
+  packed archive in every file but `AVars_version.tgi`, which the Steam game's `Warchest.rwd`
+  outranks in an `addmod` archive but not loose (ranking of `addlocaledepot` unverified).
+
 ## [0.1.0-beta.4] - unreleased
 
 ### Added

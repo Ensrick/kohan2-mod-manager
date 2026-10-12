@@ -1,0 +1,40 @@
+<Window x:Class="K2ModManager.FingerprintWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Game files" Icon="K2ModManager.ico" Width="720" Height="600" MinWidth="560" MinHeight="460"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" FontSize="14" Foreground="{DynamicResource Ink}" Background="{DynamicResource Paper}">
+  <Grid>
+    <DockPanel Margin="20,16">
+      <StackPanel DockPanel.Dock="Top">
+        <TextBlock Text="Game files" FontSize="22" FontWeight="SemiBold" />
+        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Muted}" Margin="0,4,0,12"
+                   Text="In a multiplayer match every player's game must load exactly the same game data, or the match goes out of sync. When you join, the game checks mod archives but not files copied by hand into Documents&#x2060;\&#x2060;Kohan2&#x2060;\&#x2060;data. This code covers both: players with the same code load the same data." />
+        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="5" Padding="16,12">
+          <DockPanel>
+            <Button x:Name="CopyButton" DockPanel.Dock="Right" Content="Copy" Click="OnCopy" VerticalAlignment="Center" Margin="12,0,0,0" />
+            <StackPanel>
+              <TextBlock Text="Your code" Foreground="{DynamicResource Muted}" />
+              <TextBlock x:Name="CodeText" FontFamily="Consolas" FontSize="30" FontWeight="SemiBold" />
+              <TextBlock x:Name="Summary" TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="13" Margin="0,2,0,0" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+          <Button x:Name="SaveButton" Content="Save my report..." Click="OnSave" />
+          <Button x:Name="CompareButton" Content="Compare with another player's report..." Click="OnCompare" />
+        </StackPanel>
+        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Muted}" Margin="0,8,0,0"
+                   Text="If your codes differ: one player saves a report and sends it, the other compares it here to see which files differ." />
+        <TextBlock x:Name="ResultTitle" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,14,0,0" Visibility="Collapsed" />
+      </StackPanel>
+
+      <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+        <Button Content="Close" IsCancel="True" DockPanel.Dock="Right" Margin="0" />
+        <TextBlock x:Name="Note" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="{DynamicResource Muted}" Margin="0,0,12,0" />
+      </DockPanel>
+
+      <TextBox x:Name="Result" IsReadOnly="True" FontFamily="Consolas" FontSize="12.5" TextWrapping="Wrap" Margin="0,6,0,0"
+               VerticalScrollBarVisibility="Auto" Background="{DynamicResource Panel}" Visibility="Collapsed" />
+    </DockPanel>
+  </Grid>
+</Window>

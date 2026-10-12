@@ -197,6 +197,7 @@ namespace K2ModManager
 
         void Refresh(bool scanLoose = false)
         {
+            FilesBar.Recompute(game);   // game files code, after any change (FingerprintBar.xaml.cs)
             var selectedId = (ModList.SelectedItem as ModRow)?.Mod.Id;
             NoticePanel.Children.Clear();
             if (messages.Count > 0)

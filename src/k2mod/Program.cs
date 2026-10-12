@@ -33,6 +33,12 @@ namespace K2ModCli
         Load saved game. Starts with the game's next launch. No argument: show whether it is on.
   k2mod plugin [list | on <id> | off <id>]      Game plugins: DLLs that the plugin loader (winmm.dll in
         the game folder) starts inside k2.exe. Not part of the multiplayer version check.
+  k2mod fingerprint [--report <file>] [--compare <file>]  Game files code: the game data this install
+        loads (k2.exe, Data.rwd, Music.rwd, and every file mods and loose folders such as
+        Documents\Kohan2\data add or change). Players whose codes match load the same data; the
+        game's own join check does not see loose files. --report writes the list to send to others,
+        --compare lists what differs from another player's report: exit code 0 = same, 1 = different,
+        2 = that report could not be read.
   k2mod test [--timeout S] [--visible]          Start the game with the current mods (minimized,
         without taking focus), wait for the main menu or an error, close it, report the
         errors and warnings from its log. Exit code 0 = main menu reached. Needs Steam.
@@ -79,6 +85,8 @@ Options: --game ""<Kohan II folder>"" (default: found through Steam)
             var idOpt = Opt(a, "--id");
             var timeoutOpt = Opt(a, "--timeout");
             var minutesOpt = Opt(a, "--minutes");
+            var reportOpt = Opt(a, "--report");
+            var compareOpt = Opt(a, "--compare");
             bool visible = a.Remove("--visible");
             if (a.Count == 0 || a[0] == "-h" || a[0] == "--help" || a[0] == "/?")
             {
@@ -277,6 +285,9 @@ Options: --game ""<Kohan II folder>"" (default: found through Steam)
                             Console.WriteLine($"  last game start: Mods\\{Plugins.LogName}, {File.GetLastWriteTime(Plugins.LogPath(g)):yyyy-MM-dd HH:mm}");
                         return 0;
                     }
+                    case "fingerprint":
+                        if (a.Count > 1) throw new ModException("fingerprint takes no argument: use --report <file> or --compare <file>");
+                        return Fingerprint(Game(), reportOpt, compareOpt);
                     case "test":
                     {
                         var g = Game();
@@ -322,6 +333,41 @@ Options: --game ""<Kohan II folder>"" (default: found through Steam)
             {
                 data?.Dispose();
             }
+        }
+
+        /// <summary>k2mod fingerprint: prints the game files code; writes a report; compares with another player's report.</summary>
+        static int Fingerprint(GameInstall g, string reportPath, string comparePath)
+        {
+            GameFingerprint theirs = null;
+            if (comparePath != null)
+            {
+                try
+                {
+                    if (new FileInfo(comparePath).Length > GameFingerprint.MaxReportBytes) throw new ModException($"{comparePath} is too big to be a game files report");
+                    theirs = GameFingerprint.ParseReport(File.ReadAllText(comparePath, System.Text.Encoding.UTF8));
+                }
+                catch (Exception ex) when (ex is ModException || ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    Console.Error.WriteLine($"cannot compare with {comparePath}: {ex.Message}");
+                    return 2;
+                }
+            }
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var fp = GameFingerprint.Compute(g);
+            clock.Stop();
+            Console.WriteLine($"game files: {fp.Code}");
+            Console.WriteLine("  " + fp.Summary());
+            Console.WriteLine($"  checked in {clock.Elapsed.TotalSeconds:0.00} s");
+            if (reportPath != null)
+            {
+                File.WriteAllText(reportPath, fp.ToReport("k2mod " + GameFingerprint.ToolVersion()), new System.Text.UTF8Encoding(false));
+                Console.WriteLine($"wrote {reportPath}");
+            }
+            if (theirs == null) return 0;
+            var c = new FingerprintComparison(fp, theirs);
+            Console.WriteLine(c.Headline);
+            foreach (var line in c.Lines()) Console.WriteLine(line);
+            return c.Same ? 0 : 1;
         }
 
         static void Need(List<string> a, int n)

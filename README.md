@@ -44,6 +44,13 @@ no installation or administrator rights.
   the game's data.
 - **Multiplayer:** every player needs the same mods ticked, in the same order. The game
   checks this when you connect and refuses mismatched players.
+- **Game files code (new):** the header shows a code such as "Game files: 7F3A-91C2". Players
+  whose codes match load exactly the same game data. The game's own check when you join does not
+  look at files copied by hand into `Documents\Kohan2\data`, so players with different loose files
+  can join each other and then go out of sync, often right at the start. Compare codes before a
+  match; if they differ, **Details...** saves a report to send, or compares another player's report
+  and lists the files that differ. Command line: `k2mod fingerprint [--report <file>] [--compare <file>]`.
+  Exact definition: [docs/FINGERPRINT.md](docs/FINGERPRINT.md).
 - **Multiplayer autosave (new, not yet tried in a real match):** tick **Autosave multiplayer
   games**. When you host, the match is saved every 5 minutes as "MP Autosave A" and
   "MP Autosave B", taking turns. If a game crashes, host again, choose **Load saved game**
@@ -107,7 +114,7 @@ when yours is turned on; `loadAfter` puts yours later in the list so your files 
 The full format is in [docs/FORMAT.md](docs/FORMAT.md).
 
 `k2mod.exe` does everything from a command line (`pack`, `check`, `rwd`, `install`, `list`,
-`enable`, `disable`, `up`, `down`, `remove`, `refresh`, `loose`, `plugin`); run `k2mod --help`.
+`enable`, `disable`, `up`, `down`, `remove`, `refresh`, `loose`, `plugin`, `fingerprint`); run `k2mod --help`.
 
 `k2mod test` starts the game with the installed mods (minimized, without taking focus),
 waits for the main menu or an error, closes it and prints the errors and warnings from
@@ -140,6 +147,7 @@ powershell -File build.ps1        # native plugins, then dist\K2ModManager.exe a
 ```
 
 `tests\UiPreview` renders the windows to PNG files without showing them (layout checks).
+`tests\fingerprint.ps1` checks the game files code on fake game folders (exit code 0 = pass).
 
 ## License
 
