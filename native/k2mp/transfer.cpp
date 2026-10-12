@@ -1,6 +1,7 @@
 #include "transfer.h"
 
 #include <windows.h>
+#include <cstring>
 #include <string>
 
 #include "game.h"
@@ -14,15 +15,34 @@ namespace {
 struct Override {
     const wchar_t* key;
     int index;  // entry in the AVars table
+    bool isFloat;  // the var holds a float (written from the whole number in the ini)
     int min, max;
     int value;  // -1 = keep the game's
 };
 
 Override g_settings[] = {
-    {L"blocks_per_frame", game::kVarBlocksPerFrame, 1, 256, -1},
-    {L"block_size", game::kVarBlockSize, 16, 4096, -1},
-    {L"max_pending_blocks", game::kVarMaxPendingBlocks, 1, 256, -1},
+    {L"blocks_per_frame", game::kVarBlocksPerFrame, false, 1, 256, -1},
+    {L"block_size", game::kVarBlockSize, false, 16, 4096, -1},
+    {L"max_pending_blocks", game::kVarMaxPendingBlocks, false, 1, 256, -1},
+    {L"admin_ticks_per_second", game::kVarAdminTicksPerSecond, true, 1, 240, -1},
+    {L"async_ticks_per_second", game::kVarAdminAsyncTicksPerSecond, true, 1, 240, -1},
 };
+
+// The value as stored in the var: the int itself, or the float's bits.
+int Stored(const Override& o) {
+    if (!o.isFloat) return o.value;
+    const float f = static_cast<float>(o.value);
+    int bits;
+    memcpy(&bits, &f, 4);
+    return bits;
+}
+
+double Shown(const Override& o, int stored) {
+    if (!o.isFloat) return stored;
+    float f;
+    memcpy(&f, &stored, 4);
+    return f;
+}
 uintptr_t g_tableGlobal = 0;  // address of the AVars table pointer; 0 = nothing to do (off, applied or given up)
 int g_ticks = 0;
 
@@ -78,9 +98,10 @@ void Tick() {
         int* var = VarObject(g_tableGlobal, o.index);
         if (!var) continue;
         any = true;
-        if (*var == o.value) continue;
-        k2mp::Log("transfer: %s %d -> %d", k2mp::Utf8(o.key).c_str(), *var, o.value);
-        *var = o.value;
+        const int want = Stored(o);
+        if (*var == want) continue;
+        k2mp::Log("transfer: %s %g -> %d", k2mp::Utf8(o.key).c_str(), Shown(o, *var), o.value);
+        *var = want;
     }
     if (!any && ++g_ticks > 20 * 60 * 5) {  // five minutes of ticks without the table: give up
         k2mp::Log("transfer: the game's settings table never appeared; nothing changed");

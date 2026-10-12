@@ -99,6 +99,32 @@ needs the sync log of a second player from the same match.
   from it; the other players still get the file sent. That makes **fast save delivery (step 4) the next
   step**, and step 3 changes: no reuse of copies by checksum.
 
+## The game's save transfer: measured, and why it cannot be tuned (test rig, 2026-10-12)
+
+`Run-Rig.ps1 -Scenario Transfer`: the host's lobby loads a save, the client joins without it and the game sends
+it. The rig watches the file grow in the client's own folder.
+
+| Settings (applied on both copies through `[transfer]` in `Mods\k2mp.ini`) | Result |
+|---|---|
+| game defaults (3 runs) | 214-223 KB in 104-109 s: **2.0 KB/s**. A 900 KB save takes about 7.5 minutes. |
+| `NetworkFileTransferBlocksPerFrame` 20 -> 100 | 1.6 KB/s, did not finish in the time given |
+| `NetworkFileTransferBlockSize` 64 -> 512 or 1024 (blocks per frame 6 / 3) | nothing arrives; one copy hung on exit |
+| `NetworkAdminAsyncTicksPerSecond` 16 -> 64 | 1.97 KB/s |
+| `NetworkAdminTicksPerSecond` 16 -> 120 | 2.01 KB/s |
+
+About 32 blocks of 64 bytes per second, whatever the settings: the limit is inside the transfer's own stream
+code, not in a setting. Making saves arrive fast therefore needs a way around the game's transfer between players
+who both have the plugin (step 4), not a change to it.
+
+## Game bug: a player still in the lobby crashes when the host leaves
+
+Seen four times on the rig (client logs of runs at 15:14, 15:48, 17:16 and 17:28): the host quits while the client
+is in the lobby; the client logs `NET: PlayerLeave()` / `ClientLeave(<host>)`, then dozens of
+`NET: PlayerLeave() called with invalid player`, `ASSERT: _data<_n_possibilities`, `ERROR: thread <a> timeout locking
+mutex <m> (owned by <b>)`, and dies with "timeout waiting for mutex" (C++ exception E06D7363) and a crash dump. The
+plugin has no code on that path (it happened with and without its tick hooks). Same family as "the host's game
+crashed and the match never resumed" in the evidence above; a fix target once its cause is traced.
+
 ## Testing save copies with real players (k2mp 0.2.0-dev.1)
 
 Two players, both with Multiplayer Fixes ticked in the manager:

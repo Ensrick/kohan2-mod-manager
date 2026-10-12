@@ -49,6 +49,8 @@ constexpr uint32_t kSerializeConnect = 0x1506dd;
 // (0x5593ea), so a block size must be the same on every PC of a game.
 constexpr uint32_t kFileSenderBlockCount = 0x158ca4;  // TGC_FileSender: number of blocks of the file being sent
 constexpr uint32_t kFileSenderFill = 0x158ef4;        // TGC_FileSender: queue blocks up to MaxPendingBlocks
+constexpr int kVarAdminTicksPerSecond = 0x46;       // NetworkAdminTicksPerSecond (float)
+constexpr int kVarAdminAsyncTicksPerSecond = 0x47;  // NetworkAdminAsyncTicksPerSecond (float, 16)
 constexpr int kVarBlocksPerFrame = 0x48;
 constexpr int kVarBlockSize = 0x49;
 constexpr int kVarMaxPendingBlocks = 0x4a;
