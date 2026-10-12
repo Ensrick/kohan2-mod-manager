@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "../k2mp/fastsend.h"
+#include "../k2mp/game.h"
 #include "../k2mp/hook.h"
 #include "../k2mp/plugin.h"
 #include "../k2mp/savecopy.h"
@@ -224,6 +226,95 @@ void TestHostStub() {
     ExpectRegisters("host");
 }
 
+
+// fast transfers: the decision on fake game objects, and the hook as the game calls it (fastcall, ECX = connection).
+alignas(16) uint8_t g_admin[0x400], g_conn[0x500], g_net[0x100], g_node[0x100];
+void* g_adminPtr = g_admin;
+void* g_nodePtr = g_node;
+int g_fakeType = 0;
+void* volatile g_fakeSaw = nullptr;
+int __fastcall FakeWantedType(void* conn) {
+    g_fakeSaw = conn;
+    return g_fakeType;
+}
+
+template <typename T>
+void Put(uint8_t* object, uint32_t offset, T value) {
+    memcpy(object + offset, &value, sizeof(T));
+}
+
+void ResetFastSendObjects() {
+    memset(g_admin, 0, sizeof(g_admin));
+    memset(g_conn, 0, sizeof(g_conn));
+    memset(g_net, 0, sizeof(g_net));
+    memset(g_node, 0, sizeof(g_node));
+    Put<void*>(g_admin, game::kAdminServer, g_admin);  // this PC hosts
+    g_conn[game::kConnUp] = 1;
+    Put<int>(g_conn, game::kConnFileState, game::kFileStateSending);
+    Put<void*>(g_conn, game::kConnNetConn, g_net);
+    Put<float>(g_net, game::kNetConnLastSend, 10.0f);
+    Put<float>(g_node, game::kNetNodeClock, 10.05f);
+}
+
+void TestFastSend() {
+    ResetFastSendObjects();
+    Check(fastsend::Eligible(g_admin, g_conn), "fast: the host sending a player a file");
+    Put<int>(g_conn, game::kConnFileState, 1);
+    Check(!fastsend::Eligible(g_admin, g_conn), "fast: nothing extra once the file is sent");
+    ResetFastSendObjects();
+    Put<void*>(g_admin, game::kAdminServer, g_node);
+    Check(!fastsend::Eligible(g_admin, g_conn), "fast: never on a PC that is not the host");
+    ResetFastSendObjects();
+    g_admin[game::kAdminBackupMode] = 1;
+    Check(!fastsend::Eligible(g_admin, g_conn), "fast: never in backup mode");
+    ResetFastSendObjects();
+    g_admin[game::kAdminFlag2ec] = 1;
+    Check(!fastsend::Eligible(g_admin, g_conn), "fast: never while the admin node's 0x2ec is set");
+    ResetFastSendObjects();
+    g_conn[game::kConnUp] = 0;
+    Check(!fastsend::Eligible(g_admin, g_conn), "fast: never to a connection that is not up");
+    ResetFastSendObjects();
+    g_conn[game::kConnFlag99] = 1;
+    Check(!fastsend::Eligible(g_admin, g_conn), "fast: never when the game sends packet type 11");
+
+    // the bucket: 60 per second, at most 6 banked
+    fastsend::Bucket b{1.0f, 10.0f};
+    Check(fastsend::Take(b, 10.0f, 60, false) && fastsend::Take(b, 10.0f, 60, false), "bucket: looking takes nothing");
+    Check(fastsend::Take(b, 10.0f, 60, true) && !fastsend::Take(b, 10.0f, 60, true), "bucket: one token, one packet");
+    int sent = 0;
+    for (int i = 0; i < 10; ++i) sent += fastsend::Take(b, 11.0f, 60, true);
+    Check(sent == 6, "bucket: a second's wait banks no more than 0.1 s worth (6)");
+    sent = 0;
+    for (int frame = 1; frame <= 25; ++frame)  // one second of a sender that runs 25 times a second
+        while (fastsend::Take(b, 11.0f + frame * 0.04f, 60, true)) ++sent;
+    Check(sent >= 59 && sent <= 61, "bucket: 60 packets in a second even when the sender runs 25 times a second");
+    fastsend::Bucket back{0.5f, 20.0f};
+    Check(!fastsend::Take(back, 19.0f, 60, true) && back.tokens == 0.5f, "bucket: a clock going back adds nothing");
+
+    using Fn = int(__fastcall*)(void*);
+    const auto hookFn = reinterpret_cast<Fn>(fastsend::testing::Hook());
+    fastsend::testing::Route(reinterpret_cast<uintptr_t>(&FakeWantedType), reinterpret_cast<uintptr_t>(&g_adminPtr),
+                             reinterpret_cast<uintptr_t>(&g_nodePtr), 60);
+    ResetFastSendObjects();
+    g_fakeType = 0;
+    Check(hookFn(g_conn) == game::kPacketTypeStreams && g_fakeSaw == g_conn,
+          "fast hook: the game's \"nothing yet\" becomes packet type 5, and the original saw the connection");
+    Check(hookFn(g_conn) == 0, "fast hook: then the bucket is empty until the clock moves");
+    Put<float>(g_node, game::kNetNodeClock, 10.1f);
+    g_fakeType = 3;
+    Check(hookFn(g_conn) == 3, "fast hook: any other answer of the game stands");
+    g_fakeType = 0;
+    Check(hookFn(g_conn) == game::kPacketTypeStreams, "fast hook: a later clock refills the bucket");
+    Check(hookFn(reinterpret_cast<void*>(0x10)) == 0, "fast hook: an unreadable connection leaves the game's answer");
+    Put<int>(g_conn, game::kConnFileState, 1);
+    Put<float>(g_node, game::kNetNodeClock, 10.5f);
+    Check(hookFn(g_conn) == 0, "fast hook: the game's pace again once the file is sent");
+    g_adminPtr = nullptr;
+    ResetFastSendObjects();
+    Check(hookFn(g_conn) == 0, "fast hook: nothing before the admin node exists");
+    g_adminPtr = g_admin;
+}
+
 }  // namespace
 
 int main() {
@@ -233,6 +324,7 @@ int main() {
     TestUserDataFallback();
     TestClientStub();
     TestHostStub();
+    TestFastSend();
     std::printf("%d failure(s)\n", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

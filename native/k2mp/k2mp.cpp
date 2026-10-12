@@ -2,11 +2,13 @@
 //
 // Features (each needs its own signatures to match, can be turned off in Mods\k2mp.ini [features], and stays off
 // on an unknown k2.exe):
-//   save_copies   every player's game keeps a copy of each multiplayer save (savecopy.h)
+//   save_copies     every player's game keeps a copy of each multiplayer save (savecopy.h)
+//   fast_transfers  the host sends saved games to players several times faster (fastsend.h)
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
 
+#include "fastsend.h"
 #include "game.h"
 #include "hook.h"
 #include "k2plugin.h"
@@ -73,6 +75,15 @@ extern "C" __declspec(dllexport) int __cdecl K2Plugin_Start(const K2Host* host) 
         ++on;
     } else
         k2mp::Log("save copies: not available for this k2.exe");
+
+    if (!k2mp::Setting(L"fast_transfers", true))
+        k2mp::Log("fast transfers: off in Mods\\k2mp.ini");
+    else if (fastsend::Install(host->exeBase)) {
+        k2mp::Log("fast transfers: on (as host, files go out at up to %d packets/s instead of 10)",
+                  fastsend::PacketsPerSecond());
+        ++on;
+    } else
+        k2mp::Log("fast transfers: not available for this k2.exe");
 
     if (transfer::Install(host->exeBase)) {  // experimental: only with [transfer] keys in Mods\k2mp.ini
         k2mp::Log("transfer settings: configured (applied on the game's thread once its settings table is built)");

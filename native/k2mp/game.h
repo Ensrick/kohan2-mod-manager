@@ -13,6 +13,7 @@ namespace game {
 constexpr uint32_t kGWorld = 0x5d7fb0;           // g_gworld; the world resource the save task serialises is at +0x28
 constexpr uint32_t kResourceManager = 0x5d7fcc;  // runs resource tasks (loads, saves) on the loader thread
 constexpr uint32_t kAdminNode = 0x5d7fe4;        // this PC's network node (TGC_AdminNode)
+constexpr uint32_t kNetNode = 0x5d7fbc;          // the packet layer under it (TGC_NetNode)
 
 // Registers the "%USERDATA%" path token: `push dword ptr [personal folder]` (an engine string such as
 // "C:/Users/<name>/Documents/Kohan2", from SHGetFolderPathW(CSIDL_PERSONAL) + "Kohan2"). The game's work depot, where
@@ -54,6 +55,43 @@ constexpr int kVarAdminAsyncTicksPerSecond = 0x47;  // NetworkAdminAsyncTicksPer
 constexpr int kVarBlocksPerFrame = 0x48;
 constexpr int kVarBlockSize = 0x49;
 constexpr int kVarMaxPendingBlocks = 0x4a;
+// The send rate of one connection in bytes per second (TGC_NetNode::SendPackets 0x55b84d spends it as a byte budget per
+// connection): NetSteamBandwidth when the net node runs on Steam (byte at node + 0x65), else NetMaxBandwidthToUnknown when
+// the admin node's byte at + 0x304 is set, else NetLanBandwidth. These three floats live in a second settings table,
+// reached through `mov eax, [table]` at kConnBandwidth + 0xb; the net node and admin node globals are read the same way
+// at + 0x0 and + 0x18.
+constexpr uint32_t kConnBandwidth = 0x15c44b;
+constexpr int kVarLanBandwidth = 0xc1;      // NetLanBandwidth (float, 200000)
+constexpr int kVarUnknownBandwidth = 0xc2;  // NetMaxBandwidthToUnknown (float, 4000)
+constexpr int kVarSteamBandwidth = 0xc3;    // NetSteamBandwidth (float, 200000)
+
+// TGC_AdminConn::GetWantedPacketType (fastcall, ECX = the connection to one other PC): which packet to send that PC
+// now, 0 = none yet. SendPackets (0x55b84d) asks it through TGC_NetConn 0x55bfb1 to pick a connection, and the packet
+// writer (0x54fd85) asks it again for what to write. On the host, a player who is in the lobby or the match gets packet
+// type 5 at most every 0.1 s; type 5 carries the connection's streams, the file being sent among them, in at most 384
+// bytes (0x551304). Hence about 2 KB/s for a save sent from the lobby.
+constexpr uint32_t kGetWantedPacketType = 0x14fb23;
+constexpr uint32_t kWantedTypeWriteCall = 0x14fd8d;     // in the packet writer, ECX = the connection
+constexpr uint32_t kWantedTypeScheduleCall = 0x15bfc8;  // in TGC_NetConn 0x55bfb1, ECX = the connection
+constexpr int kPacketTypeStreams = 5;
+// TGC_AdminConn::UpdateFileTransferStatus (thiscall, the connection): reports the progress of the file this PC is
+// sending that player; the connection's state at +0x3c is 2 while it does, and it sets 1 when the last block is in.
+constexpr uint32_t kUpdateFileTransferStatus = 0x15000a;
+
+// ---------------------------------------------------------------- network objects (field offsets)
+// TGC_AdminNode
+constexpr uint32_t kAdminServer = 0x2e4;     // the node acting as server: the admin node itself on the host
+constexpr uint32_t kAdminFlag2ec = 0x2ec;    // byte; when set GetWantedPacketType only answers for the server
+constexpr uint32_t kAdminBackupMode = 0x2ed; // byte; set while the host is lost ("backup mode")
+// TGC_AdminConn
+constexpr uint32_t kConnFileState = 0x3c;    // 2 while this PC sends that player a file
+constexpr int kFileStateSending = 2;
+constexpr uint32_t kConnUp = 0x98;           // byte; GetWantedPacketType sends nothing while it is 0
+constexpr uint32_t kConnFlag99 = 0x99;       // byte; when set the host sends packet type 11 instead
+constexpr uint32_t kConnNetConn = 0x42c;     // its TGC_NetConn
+// TGC_NetConn / TGC_NetNode
+constexpr uint32_t kNetConnLastSend = 0x90;  // float: network clock when it last sent a packet
+constexpr uint32_t kNetNodeClock = 0x50;     // float: network clock, seconds
 
 // KKC_JoinDirectDialog's join handler (0x4eedb8) reads the IP and port editboxes with the widget text getter
 // (thiscall, returns the address of the widget's engine string). Only the test rig redirects these two calls.
@@ -108,8 +146,29 @@ inline constexpr Signature kSignatures[] = {
     {"file sender block count", kFileSenderBlockCount, "a1 ?? ?? ?? ?? 56 57 8b 79 48 8b 80 24 01 00 00 8b 49 2c 8b 30"},
     // mov edx, [AVars table]; push ebx; push ebp; mov ebx, ecx; mov eax, [edx+0x128] (max pending); push esi; push edi
     {"file sender fill", kFileSenderFill, "8b 15 ?? ?? ?? ?? 53 55 8b d9 8b 82 28 01 00 00 56 57 8b 28 8b 82 24 01"},
+    // mov eax, [net node]; cmp byte [eax+0x65], 0; je; mov eax, [net table]; mov eax, [eax+0x30c]; jmp;
+    // mov eax, [admin node]; cmp byte [eax+0x304], 0
+    {"connection bandwidth", kConnBandwidth,
+     "a1 ?? ?? ?? ?? 80 78 65 00 74 0d a1 ?? ?? ?? ?? 8b 80 0c 03 00 00 eb 21 a1 ?? ?? ?? ?? 80 b8 04 03 00 00 00"},
     // push dword ptr [personal folder]; mov ecx, [esp+8]; push "%USERDATA%"; call; ret 4
     {"user data token", kUserDataToken, "ff 35 ?? ?? ?? ?? 8b 4c 24 08 68 ?? ?? ?? ?? e8 1d 58 e6 ff c2 04 00"},
+    // push esi; mov esi, ecx; mov ecx, [admin node]; cmp byte [ecx+0x2ec], 0; je; cmp esi, [ecx+0x2e4]; jne; push 2;
+    // mov eax, [net node]; mov ecx, [esi+0x42c]; movss xmm0, [eax+0x50]; xor eax, eax; subss xmm0, [ecx+0x90]
+    {"TGC_AdminConn::GetWantedPacketType", kGetWantedPacketType,
+     "56 8b f1 8b 0d ?? ?? ?? ?? 80 b9 ec 02 00 00 00 74 35 3b b1 e4 02 00 00 0f 85 16 01 00 00 6a 02 a1 ?? ?? ?? ?? "
+     "8b 8e 2c 04 00 00 f3 0f 10 40 50 33 c0 f3 0f 5c 81 90 00 00 00"},
+    // its host branch: cmp byte [esi+0x99], 0; ... comiss xmm0, [0.1]; ...; cmp byte [esi+0x98], 0; ...;
+    // cmp byte [ecx+0x2ed], 0
+    {"GetWantedPacketType host branch", kGetWantedPacketType + 0x55,
+     "80 be 99 00 00 00 00 74 25 6a 0b 8b 8e 2c 04 00 00 a1 ?? ?? ?? ?? f3 0f 10 40 50 f3 0f 5c 81 90 00 00 00 33 c0 "
+     "0f 2f 05 ?? ?? ?? ?? eb be 80 be 98 00 00 00 00 0f 84 a4 00 00 00 80 b9 ed 02 00 00 00"},
+    // mov esi, ecx; call GetWantedPacketType; mov edi, [ebp+8]
+    {"packet writer call", kWantedTypeWriteCall - 2, "8b f1 e8 91 fd ff ff 8b 7d 08"},
+    // mov ecx, eax; neg esi; call GetWantedPacketType; mov [edi+4], esi
+    {"send scheduler call", kWantedTypeScheduleCall - 4, "8b c8 f7 de e8 56 3b ff ff 89 77 04"},
+    // cmp dword [edi+0x3c], 2; jne; push ebx; lea ebx, [edi+0x3b4] (the file sender)
+    {"TGC_AdminConn::UpdateFileTransferStatus", kUpdateFileTransferStatus + 0x10,
+     "83 7f 3c 02 0f 85 bb 00 00 00 53 8d 9f b4 03 00 00"},
     // lea eax, [ecx + 0x6c]; ret
     {"widget text getter", kWidgetText, "8d 41 6c c3"},
     // mov ecx, [edi + 0xa8] (IP editbox); call text getter; mov eax, [eax]; sub eax, 0x10; push eax; call
@@ -129,6 +188,8 @@ struct CallSite {
 inline constexpr CallSite kCallSites[] = {
     {"GameSave client call -> BeginSoloTask", kGameSaveClientCall, kBeginSoloTask},
     {"GameSave host call -> CreateSaveGameTask", kGameSaveHostCall, kCreateSaveGameTask},
+    {"packet writer -> GetWantedPacketType", kWantedTypeWriteCall, kGetWantedPacketType},
+    {"send scheduler -> GetWantedPacketType", kWantedTypeScheduleCall, kGetWantedPacketType},
     {"join direct IP read -> widget text", kJoinDirectIpRead, kWidgetText},
     {"join direct port read -> widget text", kJoinDirectPortRead, kWidgetText},
 };

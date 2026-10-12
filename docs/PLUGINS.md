@@ -79,5 +79,9 @@ calls; each feature has its own file and its own switch in `Mods\k2mp.ini`:
 
 ```ini
 [features]
-save_copies = 1
+save_copies = 1      ; every player's game keeps "<save> (copy).RSG" of each multiplayer save
+fast_transfers = 1   ; as host, send saved games to players several times faster (only the host needs it)
+
+[fast_transfers]
+packets_per_second = 60   ; 11..200; the game's own pace is 10
 ```

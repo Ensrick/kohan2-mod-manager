@@ -78,7 +78,7 @@ needs the sync log of a second player from the same match.
 | 1 | **Game files code** in the manager: one short code per install from the data the game actually loads (archives, mods and loose files), and a report two players can compare. Catches the data mismatches the join check misses. Definition: [FINGERPRINT.md](FINGERPRINT.md). | built, manager 0.1.0-beta.6 |
 | 2 | **Save copies** (`save_copies`): every non-host PC writes `<save> (copy).RSG` when the host saves, with the engine's own save task while the game is paused for the host's save. Host and players log the SHA-256 of their files. | built; works in a two-player LAN match on the test rig (below); not yet in an online match |
 | 3 | **No more refused reloads**: a player whose own `X` differs from the host's is told "Your version of X is different" and cannot load; move such a file aside and download the host's instead. (Reusing copies by checksum is out: copies are never byte-identical, see below.) | planned |
-| 4 | **Fast save delivery** between players who both have the plugin, on a private Steam channel; players without it keep the game's own transfer. | planned |
+| 4 | **Fast transfers** (`fast_transfers`): the host sends a save to each player at up to 60 packets/s instead of 10. Only the host needs the plugin; players receive the game's own packets, just more of them. | built, k2mp 0.2.0-dev.4: 8.4x faster on the test rig (below); not yet in an online match |
 | 5 | **Host autosave** every few minutes, so a crash loses minutes at most. | planned (the script-based autosave in 0.1.0-beta.2 is the stopgap) |
 | 6 | **Rejoin a running match** after a drop. | planned |
 | 7 | **Desync cause** of the early desyncs. | needs a second player's sync log |
@@ -96,25 +96,55 @@ needs the sync log of a second player from the same match.
   simulation itself was identical; those bytes look like per-PC view state.
 - So a copy is never byte-identical to the host's save, and the lobby's checksum (h = h * 7 + byte over
   the file) will always tell them apart. A copy is a working save of the same moment for whoever hosts
-  from it; the other players still get the file sent. That makes **fast save delivery (step 4) the next
+  from it; the other players still get the file sent. That makes **fast transfers (step 4) the next
   step**, and step 3 changes: no reuse of copies by checksum.
 
-## The game's save transfer: measured, and why it cannot be tuned (test rig, 2026-10-12)
+## The game's save transfer: what limits it, and fast transfers (test rig, 2026-10-12)
 
 `Run-Rig.ps1 -Scenario Transfer`: the host's lobby loads a save, the client joins without it and the game sends
-it. The rig watches the file grow in the client's own folder.
+it. The rig watches the file grow in the client's own folder. A 220,530-byte save:
 
-| Settings (applied on both copies through `[transfer]` in `Mods\k2mp.ini`) | Result |
+| Settings | Result |
 |---|---|
-| game defaults (3 runs) | 214-223 KB in 104-109 s: **2.0 KB/s**. A 900 KB save takes about 7.5 minutes. |
+| game defaults (3 runs) | 104-109 s: **2.0 KB/s**. A 900 KB save takes about 7.5 minutes. |
 | `NetworkFileTransferBlocksPerFrame` 20 -> 100 | 1.6 KB/s, did not finish in the time given |
 | `NetworkFileTransferBlockSize` 64 -> 512 or 1024 (blocks per frame 6 / 3) | nothing arrives; one copy hung on exit |
-| `NetworkAdminAsyncTicksPerSecond` 16 -> 64 | 1.97 KB/s |
-| `NetworkAdminTicksPerSecond` 16 -> 120 | 2.01 KB/s |
+| `NetworkAdminAsyncTicksPerSecond` 16 -> 64, `NetworkAdminTicksPerSecond` 16 -> 120 | 1.97 / 2.01 KB/s |
+| `NetMaxBandwidthToUnknown` 4000 -> 400000 | 2.03 KB/s (the rig's connections use `NetLanBandwidth`, 200,000) |
+| **fast transfers, 60 packets/s** | **12.6 s, 17.1 KB/s (8.4x)**; file identical |
+| fast transfers, 120 packets/s | 6.0 s, 35.6 KB/s (17x); file identical |
 
-About 32 blocks of 64 bytes per second, whatever the settings: the limit is inside the transfer's own stream
-code, not in a setting. Making saves arrive fast therefore needs a way around the game's transfer between players
-who both have the plugin (step 4), not a change to it.
+What sets the pace (all on the host's side):
+
+- **Packets.** `TGC_AdminConn::GetWantedPacketType` (0x54fb23) decides, per connection, when the next packet goes. The
+  host sends a player who is in the lobby or the match packet type 5 once more than 0.1 s have passed since the last
+  one: about 10 packets per second, whatever the settings above.
+- **Room in a packet.** Type 5 (0x551304) carries four streams, each written into what is left of the packet: the
+  first up to 256 bytes, the rest up to 384 bytes in all. The file being sent (the connection's `TGC_FileSender` at
+  +0x3b4) is the last of them and got about 170 bytes per packet in the measurement.
+- **Not the bandwidth settings.** `TGC_NetNode::SendPackets` (0x55b84d) spends a byte budget per connection at
+  `NetSteamBandwidth` (Steam games), `NetMaxBandwidthToUnknown` (4,000 bytes/s, when the admin node's byte at +0x304,
+  taken from the host settings, is set) or `NetLanBandwidth` (200,000). At 10 packets of 384 bytes a second, only the
+  4,000 limit could ever bind. These settings live in a second table (0x9dd478, entries 0xc1-0xc3);
+  `[transfer]` in `Mods\k2mp.ini` can set them for tests.
+- The file stream sends the blocks never sent before first, then fills spare room with copies of blocks still
+  unacknowledged (0x557f98), and the receiver acknowledges every packet by sequence number in each packet it sends
+  (32 at a time, about 10 a second). More packets therefore carry more new blocks.
+
+**Fast transfers** (`fast_transfers`, on by default): while this PC hosts and its connection to a player is sending a
+file (that connection's state at +0x3c is 2, set by the game until the last block is acknowledged), the plugin answers
+"type 5 now" where `GetWantedPacketType` said "nothing yet", paced by a token bucket per player: `packets_per_second`
+(default 60, 11..200) tokens a second, at most 0.1 s worth banked, because the game's sender runs only about 25 times
+a second. Both places that ask (the sender's choice of connection at 0x55bfc8 and the packet writer at 0x54fd8d) are
+redirected, and they agree because they ask in the same round with the same clock. The packets are the game's own;
+a player with a stock game just gets more of them, so only the host needs the plugin. The game's own per-connection
+and per-PC byte budgets still apply on top (200,000 bytes/s on Steam and LAN). Logged per transfer: start, end, and
+how many packets went early.
+
+60 is the default rather than 120 because the host's upload is shared: 60 packets of about 400 bytes is about
+24 KB/s per player receiving a save at the same time, comfortably inside any current home connection; 120 is tested
+and can be set in `Mods\k2mp.ini`. Larger packets (the receivers take up to 4,096 bytes: `TGC_WSSocket::Receive`
+0x571484 and `TGC_SteamSock::Update` 0x4804b8) would add more; not done.
 
 ## Game bug: a player still in the lobby crashes when the host leaves
 

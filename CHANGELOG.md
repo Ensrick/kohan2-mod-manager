@@ -2,6 +2,27 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.1.0-beta.9] - unreleased
+
+### Added
+- Multiplayer Fixes 0.2.0-dev.4, **fast transfers** (`fast_transfers`, on by default): when this PC hosts, a save
+  goes to a player who lacks it at up to 60 packets a second instead of the game's 10 (`[fast_transfers]
+  packets_per_second`, 11..200). The packets are the game's own, so only the host needs the plugin. On the test rig
+  a 220 KB save arrived in 12.6 s instead of 106 s (6.0 s at 120 packets/s), identical to the host's file. Not yet
+  tried in an online match.
+- `[transfer]` test settings: `admin_ticks_per_second`, `async_ticks_per_second`, `lan_bandwidth`,
+  `unknown_bandwidth`, `steam_bandwidth`; the plugin logs which of the three bandwidths the game's connections use.
+- Test rig: `-PluginSettings` writes any `Mods\k2mp.ini` section for one run; the rig waits up to 150 s for both
+  copies to close before removing its test files from the game folder.
+
+### Found
+- Why saves arrive at 2 KB/s: the host sends a player in the lobby one packet every 0.1 s
+  (`TGC_AdminConn::GetWantedPacketType`), at most 384 bytes, and the file gets what the packet's other three
+  streams leave (about 170 bytes). No setting changes either; the bandwidth settings (`NetLanBandwidth`,
+  `NetSteamBandwidth` 200,000 bytes/s) are far above that. Details in `docs/MULTIPLAYER.md`.
+- The game bug "a player still in the lobby crashes when the host leaves" (`PlayerLeave() called with invalid
+  player`, mutex timeout) happened a fifth time on the rig, again with no plugin code on that path.
+
 ## [0.1.0-beta.8] - unreleased
 
 ### Fixed

@@ -7,6 +7,10 @@
 //   block_size = 64            ; NetworkFileTransferBlockSize: MUST be the same on every PC in a game, or files arrive
 //                              ; corrupt (the receiver splits them with its own value)
 //   max_pending_blocks = 256   ; NetworkFileTransferMaxPendingBlocks (at most 256: the stream's ring buffer)
+//   admin_ticks_per_second = 16, async_ticks_per_second = 16   ; NetworkAdmin(Async)TicksPerSecond
+//   lan_bandwidth = 200000, unknown_bandwidth = 4000, steam_bandwidth = 200000   ; bytes per second each connection may
+//                              ; send: NetLanBandwidth, NetMaxBandwidthToUnknown, NetSteamBandwidth (game::kConnBandwidth
+//                              ; picks one); a sender-side limit, so raising it needs no change on the other PCs
 // Keys left out keep the game's values. The values are written into the game's settings table once it exists.
 #pragma once
 #include <cstdint>

@@ -12,6 +12,11 @@ Needs Steam running (the game's copy protection) and nobody playing. Exit code 0
 passes; it prints what each copy's plugin logged and the SHA-256 of the host's save and the
 client's copy.
 
+Other runs: `-Scenario Transfer` (the host's lobby loads a save the client lacks; measures how long
+the game takes to send it), `-PluginSettings @{ fast_transfers = @{ packets_per_second = 120 } }`
+(any `Mods\k2mp.ini` section for this run only), `-TransferSettings @{ ... }` (the `[transfer]`
+test settings), `-ExtraSettings` (extra lines for both copies' `User\UVars.tgi`).
+
 ## How it works
 
 | Step | How |

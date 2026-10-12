@@ -24,7 +24,7 @@ int wmain(int argc, wchar_t** argv) {
         std::fprintf(stderr, "cannot map %ls (error %lu)\n", argv[2], GetLastError());
         return 2;
     }
-    char report[1024] = {};
+    char report[8192] = {};
     const int bad = check(reinterpret_cast<uintptr_t>(exe), report, sizeof(report));
     std::printf("image at %p\n%s%d site(s) differ\n", static_cast<void*>(exe), report, bad);
     return bad == 0 ? 0 : 1;

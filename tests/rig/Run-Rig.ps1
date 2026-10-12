@@ -21,7 +21,9 @@ param(
     [int] $LaunchAfter = 90,               # seconds the host waits in its lobby for the client before launching
     [int] $SaveAfter = 60,                 # SaveCopy: seconds into the match before the host saves
     [string] $SaveName = 'Rig Test',
-    [hashtable] $TransferSettings = @{}   # written to Mods\k2mp.ini [transfer] for this run (both copies read it), then removed
+    [hashtable] $TransferSettings = @{},  # written to Mods\k2mp.ini [transfer] for this run (both copies read it), then removed
+    [hashtable] $PluginSettings = @{},    # more of Mods\k2mp.ini for this run: @{ section = @{ key = value } }
+    [string[]] $ExtraSettings = @()       # extra lines for both copies' User\UVars.tgi, e.g. 'float NetMaxBandwidthToUnknown = 400000'
 )
 $ErrorActionPreference = 'Stop'
 $logs = Join-Path $Game 'Logs'
@@ -43,7 +45,10 @@ if (-not (Test-Path $rigShfolder)) { throw 'build the test shfolder.dll first (n
 if ((Test-Path $shfolderInGame) -and (Get-FileHash $shfolderInGame).Hash -ne (Get-FileHash $rigShfolder).Hash) {
     throw 'the game folder has a shfolder.dll that is not the rig''s; not touching it'
 }
-if ($TransferSettings.Count -and (Test-Path $ini)) { throw 'Mods\k2mp.ini exists already; not overwriting it' }
+$iniSections = [ordered]@{}
+if ($TransferSettings.Count) { $iniSections['transfer'] = $TransferSettings }
+foreach ($k in $PluginSettings.Keys) { $iniSections[$k] = $PluginSettings[$k] }
+if ($iniSections.Count -and (Test-Path $ini)) { throw 'Mods\k2mp.ini exists already; not overwriting it' }
 if ($Scenario -eq 'Transfer' -and -not (Get-ChildItem $hostSaves -Filter '*.RSG' -ErrorAction SilentlyContinue)) {
     throw 'the rig host has no save to load: run -Scenario SaveCopy first'
 }
@@ -72,6 +77,10 @@ $rigSettings = @'
 	flag	FirstRun = false
 }
 '@
+if ($ExtraSettings.Count) {
+    $rigSettings = $rigSettings.Replace("	flag	FirstRun = false", (@("	flag	FirstRun = false") + ($ExtraSettings | ForEach-Object { "	$_" })) -join "`n")
+    "extra settings for both copies: $($ExtraSettings -join '; ')"
+}
 foreach ($d in $hostDocs, $clientDocs) {
     $data = Join-Path $d 'Kohan2\data'
     robocopy $playerData $data /E /XD Save synclogs Films Screenshots User /NFL /NDL /NJH /NJS /NP | Out-Null
@@ -168,9 +177,13 @@ New-Item -ItemType Directory -Force (Join-Path $mods 'rig') | Out-Null
 "# rig client, $Scenario (written by tests/rig/Run-Rig.ps1)`r`n$clientScript" | Set-Content (Join-Path $mods 'rig\client.txt') -Encoding ascii
 
 foreach ($f in Get-ChildItem $mods -Filter 'plugins*.log') { Remove-Item $f.FullName }
-if ($TransferSettings.Count) {
-    (@('[transfer]') + ($TransferSettings.GetEnumerator() | ForEach-Object { "$($_.Key) = $($_.Value)" })) | Set-Content $ini -Encoding ascii
-    "transfer settings for this run: $(($TransferSettings.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ')"
+if ($iniSections.Count) {
+    $iniLines = foreach ($section in $iniSections.Keys) {
+        "[$section]"
+        foreach ($e in $iniSections[$section].GetEnumerator()) { "$($e.Key) = $($e.Value)" }
+    }
+    $iniLines | Set-Content $ini -Encoding ascii
+    "plugin settings for this run: $($iniLines -join '; ')"
 }
 Copy-Item $rigShfolder $shfolderInGame -Force
 
@@ -225,9 +238,15 @@ try {
     $left = Get-Process -Id $hostPid, $clientPid -ErrorAction SilentlyContinue
     if ($left) { "still running after the time limit: $($left.Id -join ', ') (left running for a look)" }
 } finally {
+    # a copy can take a minute or two to close after ReallyQuit; the game folder must not keep the test files
+    $exitBy = (Get-Date).AddSeconds(150)
+    $ours = @($hostPid, $clientPid | Where-Object { $_ })
+    while ($ours -and (Get-Process -Id $ours -ErrorAction SilentlyContinue) -and (Get-Date) -lt $exitBy) {
+        Start-Sleep -Seconds 2
+    }
     if (-not (Get-Process k2 -ErrorAction SilentlyContinue)) {
         if (Test-Path $shfolderInGame) { Remove-Item $shfolderInGame; "test shfolder.dll removed from the game folder" }
-        if ($TransferSettings.Count -and (Test-Path $ini)) { Remove-Item $ini }
+        if ($iniSections.Count -and (Test-Path $ini)) { Remove-Item $ini }
     } else { "a copy of the game is still running: shfolder.dll and k2mp.ini left in place until it exits" }
 }
 
