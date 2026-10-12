@@ -16,7 +16,8 @@ namespace K2ModCli
         mod changes are stored as patches/deltas against the player's own game, so the
         package contains none of the game's files. Settings are kept in <folder>\mod.json.
         A folder already in package layout (mod.json + files\ / patches\) is zipped as is.
-  k2mod rwd <package|folder> -o <file.rwd>      Build the .rwd archive the game loads.
+  k2mod rwd <package|zip|folder> -o <file.rwd>  Build the .rwd archive the game loads, from a package
+        or from a zip or folder of finished files laid out like the game's data.
   k2mod check <package>                         Build it in memory against this game; report.
   k2mod install <package|.rwd|.zip|folder>      Install and turn on.
   k2mod list | enable <id> | disable <id> | remove <id> | up <id> | down <id>
@@ -125,7 +126,11 @@ Options: --game ""<Kohan II folder>"" (default: found through Steam)
                     {
                         Need(a, 2);
                         if (outOpt == null) throw new ModException("rwd needs -o <file.rwd>");
-                        var pkg = ModPackage.Load(a[1]);
+                        var notes = new List<string>();
+                        var pkg = a[1].EndsWith(".k2mod", StringComparison.OrdinalIgnoreCase) || ModLibrary.IsPackageSource(a[1])
+                            ? ModPackage.Load(a[1])
+                            : ModLibrary.LoosePackage(a[1], Data(), notes);   // a zip or folder of finished files
+                        foreach (var n in notes) Console.WriteLine("  " + n);
                         var files = pkg.Build(pkg.NeedsGameData ? Data() : null);
                         uint stamp = RwdArchive.Write(outOpt, files);
                         Console.WriteLine($"wrote {outOpt}: {files.Count} files, stamp {stamp:x8}");

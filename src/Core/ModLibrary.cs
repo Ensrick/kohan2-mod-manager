@@ -127,27 +127,74 @@ namespace K2Mods
                     lib.Mods.Add(m);
                 }
             }
-            // mods missing from mods.json (lost, or copied in by hand): packages, archives, and older per-mod folders; they start off
+            // mods missing from mods.json (lost, or copied in by hand): older per-mod folders, then packages, then archives; they start off
+            bool adopted = false;
             if (Directory.Exists(game.ModsDir))
             {
-                var ids = Directory.GetDirectories(game.ModsDir).Select(Path.GetFileName)
-                    .Concat(Directory.GetFiles(game.ModsDir)
-                        .Where(f => f.EndsWith(".rwd", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".k2mod", StringComparison.OrdinalIgnoreCase))
-                        .Select(Path.GetFileNameWithoutExtension))
-                    .Select(id => id.ToLowerInvariant())
-                    .Distinct()
-                    .OrderBy(id => id, StringComparer.Ordinal);
-                foreach (var id in ids)
+                foreach (var dir in Directory.GetDirectories(game.ModsDir).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
                 {
-                    if (known.Contains(id)) continue;
-                    var m = lib.Open(id, null);
-                    if (m == null) continue;
-                    known.Add(id);
-                    lib.Mods.Add(m);
+                    var m = lib.Open(Path.GetFileName(dir).ToLowerInvariant(), null);
+                    if (m != null && known.Add(m.Id)) lib.Mods.Add(m);
                 }
+                foreach (var ext in new[] { ".k2mod", ".rwd" })
+                    foreach (var f in Directory.GetFiles(game.ModsDir).Where(f => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+                    {
+                        if (known.Contains(Path.GetFileNameWithoutExtension(f))) continue;   // a mod's own files
+                        var m = lib.Adopt(f);
+                        if (m != null && known.Add(m.Id))
+                        {
+                            lib.Mods.Add(m);
+                            adopted = true;
+                        }
+                    }
             }
+            if (adopted) Locked(() => { lib.Save(); return 0; });   // keeps the names taken from file names
             lib.MoveOutOfFolders();
             return lib;
+        }
+
+        /// <summary>
+        /// A .k2mod or .rwd put into Mods\ by hand. A package brings its own mod.json; an archive gets its
+        /// name and version from its file name ("Immortals_V2.1.rwd" is Immortals 2.1). The file is renamed
+        /// to &lt;id&gt;.k2mod or &lt;id&gt;.rwd, the name the startup script mounts, unless that name is taken.
+        /// </summary>
+        InstalledMod Adopt(string path)
+        {
+            try
+            {
+                var ext = Path.GetExtension(path).ToLowerInvariant();
+                ModManifest man;
+                if (ext == ".k2mod") man = ModPackage.ReadManifest(path);
+                else
+                {
+                    var (name, version) = NameAndVersion(Path.GetFileNameWithoutExtension(path));
+                    man = new ModManifest { Name = name, Version = version, Id = ModManifest.MakeId(name) };
+                }
+                man.Validate();
+                if (Find(man.Id) != null) return null;
+                var target = Path.Combine(Game.ModsDir, man.Id + ext);
+                if (!string.Equals(Path.GetFileName(path), Path.GetFileName(target), StringComparison.Ordinal))
+                {
+                    if (GameInstall.IsGameRunning()) return null;
+                    if (!string.Equals(path, target, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (File.Exists(target)) return null;
+                        File.Move(path, target);
+                    }
+                    else
+                    {
+                        File.Move(path, target + ".rename");   // only the letter case differs
+                        File.Move(target + ".rename", target);
+                    }
+                }
+                if (ext == ".rwd") using (new RwdArchive(target)) { }   // a real archive, not a damaged download
+                var m = new InstalledMod { Manifest = man, Folder = Game.ModsDir };
+                return m.IsInstalled || m.HasPackage ? m : null;
+            }
+            catch (Exception ex) when (ex is FormatException || ex is IOException || ex is ModException || ex is InvalidDataException || ex is UnauthorizedAccessException)
+            {
+                return null;
+            }
         }
 
         /// <summary>The mod with this id: its mod.json comes from its mods.json row, its package, or (an archive alone) its file name.</summary>
@@ -274,7 +321,7 @@ namespace K2Mods
             else if (ext == ".k2mod" || IsPackageSource(source))
                 pkg = ModPackage.Load(source);
             else
-                pkg = LooseToPackage(source, openGame(), r);
+                pkg = LoosePackage(source, openGame(), r.Messages);
 
             var man = pkg?.Manifest ?? new ModManifest
             {
@@ -328,7 +375,8 @@ namespace K2Mods
             return r;
         }
 
-        static bool IsPackageSource(string source)
+        /// <summary>A .k2mod-style zip or folder (mod.json plus files\ or patches\), as opposed to loose game files.</summary>
+        public static bool IsPackageSource(string source)
         {
             if (Directory.Exists(source))
                 return File.Exists(Path.Combine(source, "mod.json")) &&
@@ -343,7 +391,7 @@ namespace K2Mods
         }
 
         /// <summary>A zip or folder of finished files (for example an older mod made before packages existed).</summary>
-        static ModPackage LooseToPackage(string source, GameData game, InstallResult r)
+        public static ModPackage LoosePackage(string source, GameData game, List<string> messages)
         {
             List<KeyValuePair<string, Func<byte[]>>> entries;
             if (Directory.Exists(source))
@@ -390,8 +438,8 @@ namespace K2Mods
             };
             foreach (var f in files) pkg.Files[f.Key] = f.Value;
             if (report.Skipped.Count > 0)
-                r.Messages.Add($"Left out {report.Skipped.Count} file(s) that are not game data (readmes and the like)");
-            r.Messages.AddRange(report.Notes.Take(5));
+                messages.Add($"Left out {report.Skipped.Count} file(s) that are not game data (readmes and the like)");
+            messages.AddRange(report.Notes.Take(5));
             return pkg;
         }
 
@@ -407,17 +455,18 @@ namespace K2Mods
         public List<string> RebuildStale(GameData game, Action<string> progress = null)
         {
             var o = new List<string>();
-            foreach (var m in Mods.Where(m => m.HasPackage && m.BuiltAgainst != null && m.BuiltAgainst != game.Fingerprint).ToList())
+            foreach (var m in Mods.Where(m => m.HasPackage && (!m.IsInstalled || m.BuiltAgainst != null && m.BuiltAgainst != game.Fingerprint)).ToList())
             {
-                progress?.Invoke("Updating " + m.Manifest.Title + " for your copy of the game");
+                bool first = !m.IsInstalled;
+                progress?.Invoke((first ? "Building " : "Updating ") + m.Manifest.Title + " for your copy of the game");
                 try
                 {
                     var pkg = ModPackage.Load(m.PackagePath);
-                    RwdArchive.Write(m.RwdPath, pkg.Build(game));
-                    m.BuiltAgainst = game.Fingerprint;
+                    RwdArchive.Write(m.RwdPath, pkg.Build(pkg.NeedsGameData ? game : null));
+                    m.BuiltAgainst = pkg.NeedsGameData ? game.Fingerprint : null;
                     m.Problem = null;
                     m.ForgetFiles();
-                    o.Add($"Rebuilt {m.Manifest.Title} because the game's data changed");
+                    o.Add(first ? $"Built {m.Manifest.Title} from its package" : $"Rebuilt {m.Manifest.Title} because the game's data changed");
                 }
                 catch (ModException ex)
                 {

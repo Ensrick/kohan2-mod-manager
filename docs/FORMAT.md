@@ -81,6 +81,8 @@ gives an identical archive.
 ```
 
 A `.k2mod` or `.rwd` put in `Mods\` by hand (or left after `mods.json` is lost) shows up in
-the list, turned off; an archive alone takes its file name as its id and name. Manager builds
+the list, turned off, and is renamed to `<id>.k2mod` / `<id>.rwd` (unless that id is taken).
+A package brings its mod.json and is built on the next start; an archive alone takes its name
+and version from its file name (`Immortals_V2.1.rwd` is Immortals 2.1, id `immortals`). Manager builds
 before 2026-10-11 kept each mod in `Mods\<id>\` with its own `mod.json` (mods.json format 1);
 the manager moves those up into `Mods\` the next time it starts while the game is closed.
