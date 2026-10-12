@@ -2,6 +2,25 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.1.0-beta.4] - unreleased
+
+### Added
+- Mods installed by hand: the manager finds loose game files in the game's folder depots
+  (`Documents\Kohan2\data`, and the game's own `data\` and `Userdata\` folders), both files
+  that replace game files and new ones, and leaves out saves, films, maps, screenshots,
+  synclogs, settings, readmes and the `UI/Shared/options_dialog.tgi` the Steam game ships in
+  `data\`. A notice names the mod (from its `AVars_version.tgi`, "Version = Immortals 2.1", or
+  an installed mod with the same files) with **Pack it as a mod...**: a dialog asks for name and
+  version, says that a packed mod no longer matches hand installs online ("Bad Depot
+  Checksums"), then builds a deterministic `Mods\<id>.rwd`, ticks it, and moves the loose
+  files to `loose_backup_<date>\` next to their folder (never deleted, with a README on how
+  to put them back). Refused while the game runs, and when the name is taken by a mod built
+  from a package. `k2mod loose` lists, `k2mod loose pack [--name N] [--version V]` packs. A
+  copy of the hand-installed Immortals 2.1 packs byte-identical to the archive built from its
+  zip (211 files, stamp e4747efb), so players who pack it match players who installed the zip
+  through the manager. The `K2MODS_USERDATA` environment variable points the manager at
+  another user data folder (tests only).
+
 ## [0.1.0-beta.3] - unreleased
 
 ### Added

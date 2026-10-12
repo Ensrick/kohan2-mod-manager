@@ -664,26 +664,6 @@ namespace K2Mods
             s.Disabled = !on;
         }
 
-        static readonly HashSet<string> UserFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "CampaignSave", "Films", "Maps", "Save", "saves", "Screenshots", "synclogs", "User" };
-
-        /// <summary>Loose files in Documents\Kohan2\data that replace game files (they override every mod).</summary>
-        public static List<string> LooseOverrides(GameData game)
-        {
-            var o = new List<string>();
-            var root = GameInstall.UserDataDir;
-            if (!Directory.Exists(root)) return o;
-            var prefix = Path.GetFullPath(root).TrimEnd('\\') + "\\";
-            var files = Directory.EnumerateFiles(root, "*", SearchOption.TopDirectoryOnly).ToList();
-            foreach (var dir in Directory.EnumerateDirectories(root))
-                if (!UserFolders.Contains(Path.GetFileName(dir)))
-                    files.AddRange(Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories));
-            foreach (var f in files)
-            {
-                var rel = f.Substring(prefix.Length).Replace('\\', '/');
-                if (game.Contains(rel) || rel.EndsWith(".tgi", StringComparison.OrdinalIgnoreCase)) o.Add(rel);
-            }
-            return o;
-        }
+        // Loose files in Documents\Kohan2\data and the game's other folder depots (mods installed by hand): LooseMods.cs
     }
 }

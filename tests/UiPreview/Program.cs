@@ -11,6 +11,7 @@ using K2Mods;
 
 // Renders the manager's windows to PNG files without showing any window (layout check).
 // UiPreview <game folder> <out dir> [author mod folder] [--dark] [--notices]
+// With K2MODS_USERDATA set to a test folder holding loose mod files, also renders the pack dialog (loose.png).
 static class Program
 {
     [STAThread]
@@ -41,6 +42,12 @@ static class Program
         var a = new AuthorWindow(new GameInstall(game), w);
         if (args.Length > 2) typeof(AuthorWindow).GetMethod("LoadFolder", flags).Invoke(a, new object[] { args[2] });
         Save((FrameworkElement)Detach(a), 860, 760, Path.Combine(outDir, "author.png"));
+        // the pack dialog, when the main window found a hand-installed mod (K2MODS_USERDATA points at a test folder)
+        if (typeof(MainWindow).GetField("loose", flags).GetValue(w) is LooseInstall loose && loose.Count > 0)
+        {
+            var lw = new LooseWindow(loose, (ModLibrary)typeof(MainWindow).GetField("lib", flags).GetValue(w));
+            Save((FrameworkElement)Detach(lw), 720, 640, Path.Combine(outDir, "loose.png"));
+        }
         return 0;
     }
 

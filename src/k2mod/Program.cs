@@ -22,6 +22,12 @@ namespace K2ModCli
   k2mod install <package|.rwd|.zip|folder>      Install and turn on.
   k2mod list | enable <id> | disable <id> | remove <id> | up <id> | down <id>
   k2mod refresh                                 Rebuild mods after a game update changed Data.rwd.
+  k2mod loose                                   List a mod installed by hand: loose game files in
+        Documents\Kohan2\data (or the game's data\ or Userdata\ folder), which override every mod.
+  k2mod loose pack [--name N] [--version V] [--id ID]  Pack those files into one .rwd mod in Mods\,
+        turn it on, and move the loose files to a loose_backup_<date> folder next to them (never
+        deleted). After this you can only play online with players who use the same packed mod,
+        not with players who installed it by hand.
   k2mod autosave [on|off] [--minutes N]         Multiplayer autosave: whoever hosts saves the match every
         N minutes (default 5) into ""MP Autosave A"" and ""B"", so a crashed game can be resumed with
         Load saved game. Starts with the game's next launch. No argument: show whether it is on.
@@ -174,9 +180,52 @@ Options: --game ""<Kohan II folder>"" (default: found through Steam)
                         foreach (var p in lib.Problems()) Console.WriteLine("  problem: " + p);
                         foreach (var s in lib.ExternalScripts().Where(s => !s.Disabled))
                             Console.WriteLine($"  outside the manager: startup\\{s.Name} mounts {string.Join(", ", s.Mounts)}");
-                        var loose = ModLibrary.LooseOverrides(Data());
-                        if (loose.Count > 0) Console.WriteLine($"  {loose.Count} loose game file(s) in {GameInstall.UserDataDir} override every mod");
+                        var loose = LooseMods.Find(g, Data(), lib.Mods);
+                        if (loose.Count > 0)
+                            Console.WriteLine($"  hand-installed mod: {loose.Count} loose game file(s) in {loose.Where}; see k2mod loose");
                         return 0;
+                    }
+                    case "loose":
+                    {
+                        var g = Game();
+                        if (a.Count > 1 && a[1] != "pack") throw new ModException("loose takes no argument or pack");
+                        var lib = ModLibrary.Load(g);
+                        var loose = LooseMods.Find(g, Data(), lib.Mods);
+                        if (loose.Count == 0)
+                        {
+                            Console.WriteLine("no hand-installed mod files found in " + string.Join(", ", LooseMods.Depots(g).Select(d => d.Folder)));
+                            return 0;
+                        }
+                        if (a.Count == 1)
+                        {
+                            foreach (var d in loose.Depots)
+                            {
+                                Console.WriteLine($"{d.Folder}: {loose.Files.Count(f => f.Depot == d)} file(s)");
+                                foreach (var f in loose.Files.Where(f => f.Depot == d))
+                                    Console.WriteLine($"  {(f.Replaces ? "replaces" : "new     ")}  {f.Rel}");
+                            }
+                            Console.WriteLine($"{loose.Count} loose game file(s): {loose.Replacing} replace game files, {loose.Adding} new");
+                            Console.WriteLine($"suggested: --name \"{loose.SuggestedName}\" --version \"{loose.SuggestedVersion}\"" +
+                                              (loose.SuggestedFrom != null ? $" (from {loose.SuggestedFrom})" : ""));
+                            Console.WriteLine("k2mod loose pack [--name N] [--version V] packs them into one mod in Mods\\ and moves them to a backup folder.");
+                            Console.WriteLine(LooseMods.MultiplayerWarning);
+                            return 0;
+                        }
+                        Refuse(g);
+                        var man = LooseMods.ManifestFor(loose, nameOpt ?? loose.SuggestedName, versionOpt ?? loose.SuggestedVersion);
+                        if (idOpt != null) man.Id = idOpt;
+                        if (authorOpt != null) man.Author = authorOpt;
+                        var r = ModLibrary.Locked(() =>
+                        {
+                            var l = ModLibrary.Load(g);
+                            return LooseMods.Pack(l, LooseMods.Find(g, Data(), l.Mods), man, s => Console.WriteLine(s));
+                        });
+                        Console.WriteLine($"{(r.Replaced ? "replaced" : "installed")} {r.Mod.Manifest.Title} {r.Mod.Manifest.Version} -> {r.Mod.RwdPath}: {r.Files} files, stamp {r.Stamp:x8}, turned on");
+                        foreach (var m in r.Messages) Console.WriteLine("  " + m);
+                        foreach (var b in r.Backups) Console.WriteLine("  loose files moved to " + b);
+                        foreach (var f in r.NotMoved) Console.WriteLine("  could not move (still loose, still overrides the mod): " + f);
+                        Console.WriteLine("  " + LooseMods.MultiplayerWarning);
+                        return r.NotMoved.Count == 0 ? 0 : 1;
                     }
                     case "refresh":
                     {
