@@ -18,9 +18,21 @@ namespace K2Mods
         public string StartupDir => Path.Combine(Folder, "startup");
         public string ModsDir => Path.Combine(Folder, "Mods");
 
-        /// <summary>The game's work depot (autoexec.txt: adddepot %USERDATA%/data/ 1). Loose files here override every mod.</summary>
-        public static string UserDataDir =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Kohan2", "data");
+        /// <summary>
+        /// The game's work depot (autoexec.txt: adddepot %USERDATA%/data/ 1). Loose files here override every mod.
+        /// The K2MODS_USERDATA environment variable points it at another folder (tests only).
+        /// </summary>
+        public static string UserDataDir
+        {
+            get
+            {
+                var other = Environment.GetEnvironmentVariable(UserDataVariable);
+                return !string.IsNullOrWhiteSpace(other) ? Path.GetFullPath(other)
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Kohan2", "data");
+            }
+        }
+
+        public const string UserDataVariable = "K2MODS_USERDATA";
 
         public GameInstall(string folder)
         {

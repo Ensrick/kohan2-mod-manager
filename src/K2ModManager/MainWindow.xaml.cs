@@ -39,7 +39,7 @@ namespace K2ModManager
         List<FileConflict> conflicts = new List<FileConflict>();
         readonly List<string> messages = new List<string>();
         Kind messageKind = Kind.Info;
-        List<string> looseOverrides = new List<string>();
+        LooseInstall loose;
 
         public MainWindow(string[] args)
         {
@@ -187,7 +187,7 @@ namespace K2ModManager
             {
                 lib = ModLibrary.Load(game);
                 conflicts = lib.FileConflicts();
-                if (scanLoose) looseOverrides = WithData(ModLibrary.LooseOverrides);
+                if (scanLoose) loose = WithData(d => LooseMods.Find(game, d, lib.Mods));
             }
             catch (Exception ex) when (Explain(ex) != null)
             {
@@ -213,10 +213,11 @@ namespace K2ModManager
                               return new List<string> { $"Turned off {script.Name} (moved to startup\\disabled, so it can be put back)." };
                           }));
             }
-            if (looseOverrides.Count > 0)
-                AddNotice($"{looseOverrides.Count} loose game file(s) in Documents\\Kohan2\\data replace the game's own files and override every mod in this list. " +
-                          "They are usually left over from installing a mod by hand.",
-                          Kind.Warn, "Open that folder", () => Process.Start("explorer.exe", "\"" + GameInstall.UserDataDir + "\""));
+            if (loose != null && loose.Count > 0)
+                AddNotice($"A mod installed by hand was found{(loose.SuggestedFrom != null ? " (" + loose.SuggestedTitle + ")" : "")}: " +
+                          $"{loose.Count} game file(s) in {loose.Where}. They override every mod in this list. " +
+                          "Pack them into a mod to turn it on and off here like the others.",
+                          Kind.Warn, "Pack it as a mod...", PackLoose);
             UpdateButtons();
             ShowDetails();
         }
@@ -561,6 +562,36 @@ namespace K2ModManager
                 return;
             }
             new AuthorWindow(game, this).Show();
+        }
+
+        /// <summary>Packs the hand-installed mod into Mods\ (after the player names it and reads the online-play warning).</summary>
+        async void PackLoose()
+        {
+            if (!CanChange() || loose == null || loose.Count == 0) return;
+            var dlg = new LooseWindow(loose, lib) { Owner = this };
+            if (dlg.ShowDialog() != true || !CanChange()) return;
+            var man = dlg.Manifest;
+            string id = null;
+            await Run("Packing " + man.Title + "...", p => WithData(d => ModLibrary.Locked(() =>
+            {
+                var l = ModLibrary.Load(game);
+                var r = LooseMods.Pack(l, LooseMods.Find(game, d, l.Mods), man, p);
+                id = r.Mod.Id;
+                var o = new List<string>
+                {
+                    $"Packed {r.Files} hand-installed file(s) into {man.Title}{(man.Version.Length > 0 ? " " + man.Version : "")}. " +
+                    "It is ticked, so it will be used the next time you play.",
+                };
+                o.AddRange(r.Messages);
+                if (r.Backups.Count > 0)
+                    o.Add("The loose files were moved, not deleted, to " + string.Join(" and ", r.Backups) +
+                          ". To go back to the hand install, remove the mod here and move them back.");
+                if (r.NotMoved.Count > 0)
+                    o.Add($"{r.NotMoved.Count} file(s) could not be moved and still override the mod: " + string.Join(", ", r.NotMoved.Take(3)) +
+                          (r.NotMoved.Count > 3 ? " ..." : ""));
+                return o;
+            })));
+            if (id != null) ModList.SelectedItem = (ModList.ItemsSource as IEnumerable<ModRow>)?.FirstOrDefault(r => r.Mod.Id == id);
         }
 
         /// <summary>Called by the author window after "Make and install for testing".</summary>
