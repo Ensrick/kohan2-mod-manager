@@ -44,8 +44,13 @@ no installation or administrator rights.
   and pick the newer one. It uses only the game's own script commands, so it changes no
   game data and does not affect the multiplayer version check. Details:
   [docs/MP_AUTOSAVE.md](docs/MP_AUTOSAVE.md).
+- **Game plugins (new):** the **Game plugins** list turns DLL plugins on and off. They change how
+  the game program itself works and are not part of the multiplayer version check. The first one,
+  **Multiplayer Fixes**, is a work in progress (rejoining a match after dropping out); it does not
+  change the game yet. Details: [docs/PLUGINS.md](docs/PLUGINS.md).
 - **What it changes:** only `<game>\Mods\` and `<game>\startup\autoexec_mods.txt`, plus
-  `<game>\user.txt` while multiplayer autosave is on. Old startup scripts it offers to turn
+  `<game>\user.txt` while multiplayer autosave is on and `<game>\winmm.dll` (the plugin loader)
+  while a plugin is on. Old startup scripts it offers to turn
   off are moved to `startup\disabled\`, never deleted. Loose files in
   `Documents\Kohan2\data` override every mod; the manager warns when it finds game files
   there.
@@ -121,10 +126,11 @@ the same archive and stamp.
 
 ## Building
 
-Requires the .NET SDK (6 or later) on Windows; the programs target .NET Framework 4.8.
+Requires the .NET SDK (6 or later) on Windows; the programs target .NET Framework 4.8. The game
+plugins in `native\` need Visual Studio 2022 or its Build Tools with the C++ workload.
 
 ```
-powershell -File build.ps1        # dist\K2ModManager.exe and dist\k2mod.exe
+powershell -File build.ps1        # native plugins, then dist\K2ModManager.exe and dist\k2mod.exe
 ```
 
 `tests\UiPreview` renders the windows to PNG files without showing them (layout checks).

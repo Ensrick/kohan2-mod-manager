@@ -2,6 +2,21 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.1.0-beta.3] - unreleased
+
+### Added
+- Game plugins: DLLs that run inside `k2.exe`, listed under **Game plugins** in the manager with an
+  on/off box, and `k2mod plugin list | on <id> | off <id>`. Turning one on writes the plugin loader
+  (`<game>\winmm.dll`, removed again when no plugin is on), the plugin (`Mods\<id>.dll`) and
+  `Mods\plugins.txt`; the loader logs to `Mods\plugins.log`. The loader waits for the game's own
+  code to run (the Steam exe decrypts itself after start-up) before starting plugins, and the
+  manager never replaces a `winmm.dll` another program put there. Plugins are not part of the
+  multiplayer version check. Source and tests in `native/`, details in `docs/PLUGINS.md`.
+- First plugin, Multiplayer Fixes (`k2mp.dll` 0.1.0-dev.1), work in progress: it checks that it
+  recognises `k2.exe` 1.3.68 where it will patch (verified against a decrypted copy of the exe
+  mapped at a relocated address) and changes nothing in the game yet. Goal: rejoin a multiplayer
+  match after dropping out.
+
 ## [0.1.0-beta.2] - unreleased
 
 ### Added

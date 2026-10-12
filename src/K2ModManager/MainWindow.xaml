@@ -46,6 +46,43 @@
           <TextBlock DockPanel.Dock="Top" Text="Your mods" FontSize="18" FontWeight="SemiBold" />
           <TextBlock DockPanel.Dock="Top" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,2,0,8"
                      Text="Tick a mod to play with it. If two ticked mods change the same thing, the one lower in the list wins." />
+          <StackPanel x:Name="PluginPanel" DockPanel.Dock="Bottom" Margin="0,16,0,0">
+            <TextBlock Text="Game plugins" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,2,0,8"
+                       Text="Plugins change how the game program itself works. They are not part of the multiplayer version check." />
+            <ItemsControl x:Name="PluginList">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Line}" BorderThickness="1" Padding="10,8" Margin="0,0,0,6">
+                    <DockPanel>
+                      <CheckBox IsChecked="{Binding Enabled, Mode=OneWay}" Click="OnPluginToggle" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <CheckBox.LayoutTransform>
+                          <ScaleTransform ScaleX="1.35" ScaleY="1.35" />
+                        </CheckBox.LayoutTransform>
+                      </CheckBox>
+                      <TextBlock DockPanel.Dock="Right" Text="{Binding Version}" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                      <StackPanel>
+                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Description}" FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource Muted}" />
+                        <TextBlock Text="{Binding Status}" FontSize="12.5" TextWrapping="Wrap">
+                          <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                              <Setter Property="Foreground" Value="{DynamicResource StatusOk}" />
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding StatusKind}" Value="Off"><Setter Property="Foreground" Value="{DynamicResource StatusOff}" /></DataTrigger>
+                                <DataTrigger Binding="{Binding StatusKind}" Value="Warn"><Setter Property="Foreground" Value="{DynamicResource StatusWarn}" /></DataTrigger>
+                                <DataTrigger Binding="{Binding StatusKind}" Value="Bad"><Setter Property="Foreground" Value="{DynamicResource StatusBad}" /></DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </TextBlock.Style>
+                        </TextBlock>
+                      </StackPanel>
+                    </DockPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
             <Button x:Name="UpButton" Content="Move up" Click="OnUp" />
             <Button x:Name="DownButton" Content="Move down" Click="OnDown" />

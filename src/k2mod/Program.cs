@@ -25,6 +25,8 @@ namespace K2ModCli
   k2mod autosave [on|off] [--minutes N]         Multiplayer autosave: whoever hosts saves the match every
         N minutes (default 5) into ""MP Autosave A"" and ""B"", so a crashed game can be resumed with
         Load saved game. Starts with the game's next launch. No argument: show whether it is on.
+  k2mod plugin [list | on <id> | off <id>]      Game plugins: DLLs that the plugin loader (winmm.dll in
+        the game folder) starts inside k2.exe. Not part of the multiplayer version check.
   k2mod test [--timeout S] [--visible]          Start the game with the current mods (minimized,
         without taking focus), wait for the main menu or an error, close it, report the
         errors and warnings from its log. Exit code 0 = main menu reached. Needs Steam.
@@ -198,6 +200,32 @@ Options: --game ""<Kohan II folder>"" (default: found through Steam)
                         Console.WriteLine(min == null ? "multiplayer autosave: off" : $"multiplayer autosave: on, every {min} min (from the next game start)");
                         var last = MpAutosave.Latest();
                         if (last != null) Console.WriteLine($"  newest: {Path.GetFileNameWithoutExtension(last.Name)}, {last.LastWriteTime:yyyy-MM-dd HH:mm}");
+                        return 0;
+                    }
+                    case "plugin":
+                    case "plugins":
+                    {
+                        var g = Game();
+                        var verb = a.Count > 1 ? a[1] : "list";
+                        if (verb == "on" || verb == "off")
+                        {
+                            Need(a, 3);
+                            Refuse(g);
+                            var msgs = ModLibrary.Locked(() =>
+                            {
+                                var p = Plugins.Find(g, a[2]) ?? throw new ModException($"no plugin is called \"{a[2]}\" (k2mod plugin list)");
+                                return verb == "on" ? Plugins.Enable(g, p) : Plugins.Disable(g, p);
+                            });
+                            foreach (var m in msgs) Console.WriteLine("  " + m);
+                        }
+                        else if (verb != "list")
+                            throw new ModException("plugin takes list, on <id> or off <id>");
+                        var all = Plugins.List(g);
+                        if (all.Count == 0) Console.WriteLine("no plugins (this build of k2mod does not include any)");
+                        foreach (var p in all)
+                            Console.WriteLine($"[{(p.Enabled ? "x" : " ")}] {p.Id,-12} {p.Version,-14} {p.Title}{(p.BuiltIn ? "" : "  (Mods\\" + p.FileName + ")")}{(p.Problem != null ? "  PROBLEM: " + p.Problem : "")}");
+                        if (File.Exists(Plugins.LogPath(g)))
+                            Console.WriteLine($"  last game start: Mods\\{Plugins.LogName}, {File.GetLastWriteTime(Plugins.LogPath(g)):yyyy-MM-dd HH:mm}");
                         return 0;
                     }
                     case "test":

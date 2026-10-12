@@ -8,7 +8,7 @@
     <RootNamespace>K2ModManager</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>K2ModManager.ico</ApplicationIcon>
-    <Version>0.1.0-beta.2</Version>
+    <Version>0.1.0-beta.3</Version>
     <Product>Kohan II Mod Manager</Product>
     <AssemblyTitle>Kohan II Mod Manager</AssemblyTitle>
     <Copyright>Copyright (c) 2026 Ensrick. MIT License.</Copyright>
@@ -21,5 +21,10 @@
     <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="System.Windows.Forms" />
     <Resource Include="K2ModManager.ico" />
+  </ItemGroup>
+  <!-- Game plugins (native/, built by native\build.ps1). Left out when they have not been built: the manager then lists no plugins. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\native\build\Release\winmm.dll" LogicalName="plugins.winmm.dll" Condition="Exists('..\..\native\build\Release\winmm.dll')" />
+    <EmbeddedResource Include="..\..\native\build\Release\k2mp.dll" LogicalName="plugins.k2mp.dll" Condition="Exists('..\..\native\build\Release\k2mp.dll')" />
   </ItemGroup>
 </Project>

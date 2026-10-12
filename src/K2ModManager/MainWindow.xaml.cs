@@ -29,6 +29,37 @@ namespace K2ModManager
         public string StatusKind { get; }
     }
 
+    public sealed class PluginRow
+    {
+        public PluginRow(PluginInfo p, bool gameRunning)
+        {
+            Plugin = p;
+            if (p.Problem != null)
+            {
+                StatusKind = "Bad";
+                Status = "Cannot be used: " + p.Problem;
+            }
+            else if (!p.Enabled)
+            {
+                StatusKind = "Off";
+                Status = "Off";
+            }
+            else
+            {
+                StatusKind = "Ok";
+                Status = gameRunning ? "On (from the next time you start Kohan II)" : "On: starts with Kohan II";
+            }
+        }
+
+        public PluginInfo Plugin { get; }
+        public bool Enabled => Plugin.Enabled;
+        public string Title => Plugin.Title;
+        public string Version => Plugin.Version;
+        public string Description => Plugin.Description;
+        public string Status { get; }
+        public string StatusKind { get; }
+    }
+
     public partial class MainWindow : Window
     {
         enum Kind { Info, Warn, Error }
@@ -58,7 +89,12 @@ namespace K2ModManager
             Refresh(scanLoose: true);
             if (game == null) return;
             if (!GameInstall.IsGameRunning())
-                await Run("Checking your mods...", p => WithData(d => ModLibrary.Locked(() => ModLibrary.Load(game).RebuildStale(d, p))));
+                await Run("Checking your mods...", p => WithData(d => ModLibrary.Locked(() =>
+                {
+                    var o = ModLibrary.Load(game).RebuildStale(d, p);
+                    o.AddRange(Plugins.Sync(game));
+                    return o;
+                })));
             foreach (var a in args.Where(a => File.Exists(a) || Directory.Exists(a)))
                 await InstallFrom(a);
             await OfferPackagesNextToExe();
@@ -177,6 +213,8 @@ namespace K2ModManager
                 AddNotice("Kohan II: Kings of War was not found on this computer. Click \"Find the game\" and pick k2.exe in your Kohan II folder.",
                           Kind.Warn, "Find the game...", ChooseGame);
                 ModList.ItemsSource = null;
+                PluginList.ItemsSource = null;
+                PluginPanel.Visibility = Visibility.Collapsed;
                 EmptyText.Visibility = Visibility.Visible;
                 UpdateButtons();
                 ShowDetails();
@@ -197,6 +235,19 @@ namespace K2ModManager
 
             var rows = lib.Mods.Select(m => new ModRow(m, StatusOf(m, out var kind), kind)).ToList();
             ModList.ItemsSource = rows;
+            List<PluginRow> plugins;
+            try
+            {
+                bool running = GameInstall.IsGameRunning();
+                plugins = Plugins.List(game).Select(p => new PluginRow(p, running)).ToList();
+            }
+            catch (Exception ex) when (Explain(ex) != null)
+            {
+                AddNotice(Explain(ex), Kind.Error);
+                plugins = new List<PluginRow>();
+            }
+            PluginList.ItemsSource = plugins;
+            PluginPanel.Visibility = plugins.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             EmptyText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             ModList.SelectedItem = rows.FirstOrDefault(r => r.Mod.Id == selectedId) ?? rows.FirstOrDefault();
 
@@ -377,6 +428,27 @@ namespace K2ModManager
                 var m = l.Find(row.Mod.Id) ?? throw new ModException($"{row.Title} is no longer installed");
                 return on ? l.Enable(m) : l.Disable(m);
             });
+        }
+
+        void OnPluginToggle(object sender, RoutedEventArgs e)
+        {
+            var row = (PluginRow)((CheckBox)sender).DataContext;
+            bool on = ((CheckBox)sender).IsChecked == true;
+            if (!CanChange()) return;
+            try
+            {
+                var msgs = ModLibrary.Locked(() =>
+                {
+                    var p = Plugins.Find(game, row.Plugin.FileName) ?? throw new ModException($"{row.Title} is no longer in the Mods folder");
+                    return on ? Plugins.Enable(game, p) : Plugins.Disable(game, p);
+                });
+                Say(msgs);
+            }
+            catch (Exception ex) when (Explain(ex) != null)
+            {
+                Say(new[] { Explain(ex) }, Kind.Error);
+            }
+            Refresh();
         }
 
         void OnUp(object sender, RoutedEventArgs e) => MoveSelected(-1);
