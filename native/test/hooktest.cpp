@@ -168,6 +168,14 @@ void TestLobbyChecksum() {
     Check(k2mp::LobbyChecksum(ff, sizeof(ff)) == static_cast<uint32_t>(h), "LobbyChecksum: wraps at 32 bits, bytes unsigned");
 }
 
+void TestUserDataFallback() {
+    // No game here (exe base 0): the game's value cannot be read, so it falls back to Documents\Kohan2\data.
+    const std::wstring d = k2mp::UserDataDir();
+    const std::wstring tail = L"\\Kohan2\\data";
+    Check(d.size() > tail.size() && d.compare(d.size() - tail.size(), tail.size(), tail) == 0 && d.find(L'/') == std::wstring::npos,
+          "UserDataDir: falls back to Documents\\Kohan2\\data with backslashes");
+}
+
 void ExpectRegisters(const char* which) {
     char what[160];
     sprintf_s(what, "%s: ESP balanced after the call", which);
@@ -222,6 +230,7 @@ int main() {
     TestMatches();
     TestCopyName();
     TestLobbyChecksum();
+    TestUserDataFallback();
     TestClientStub();
     TestHostStub();
     std::printf("%d failure(s)\n", g_failures);

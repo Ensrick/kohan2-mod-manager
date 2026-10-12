@@ -68,11 +68,22 @@ std::wstring g_gameDir, g_modsDir;
 HANDLE g_log = INVALID_HANDLE_VALUE;
 CRITICAL_SECTION g_logLock;
 int g_hooked = 0;  // how many of k2.exe's winmm import entries point at our wrappers
+DWORD g_gameThread = 0;  // the game's initial (main) thread, from DllMain; plugins start and tick only on it
+const char* g_tickSource = nullptr;  // which wrapped call drives the ticks (logged once)
+K2PluginTickFn g_ticks[16] = {};
+volatile LONG g_tickCount = 0;
+DWORD g_lastTick = 0;
 
 using PeriodFn = UINT(WINAPI*)(UINT);
 using TimeFn = DWORD(WINAPI*)();
+using QpcFn = BOOL(WINAPI*)(LARGE_INTEGER*);
+using MsgWaitFn = DWORD(WINAPI*)(DWORD, const HANDLE*, BOOL, DWORD, DWORD);
+using TranslateFn = BOOL(WINAPI*)(const MSG*);
 PeriodFn g_timeBeginPeriod = nullptr, g_timeEndPeriod = nullptr;
 TimeFn g_timeGetTime = nullptr;
+QpcFn g_qpc = nullptr;
+MsgWaitFn g_msgWait = nullptr;
+TranslateFn g_translate = nullptr;
 
 bool LoadRealDll() {
     wchar_t path[MAX_PATH];
@@ -218,37 +229,69 @@ void StartPlugins() {
         }
         const int r = start(&host);
         HostLog("loader", "%ls %s", name.c_str(), r == 0 ? "started" : "stayed off");
+        const auto tick = reinterpret_cast<K2PluginTickFn>(GetProcAddress(m, K2_PLUGIN_TICK));
+        if (r == 0 && tick && g_tickCount < static_cast<LONG>(sizeof(g_ticks) / sizeof(g_ticks[0]))) g_ticks[g_tickCount++] = tick;
         ++loaded;
     }
     fclose(f);
     HostLog("loader", "%d plugin(s) loaded", loaded);
 }
 
-void MaybeStart(void* returnAddress) {
+// A call from the game's own code (`returnAddress` in k2.exe's .text) on its main thread: the first one starts the
+// plugins, later ones run their ticks, at most every 50 ms.
+void OnGameCall(void* returnAddress, const char* source) {
     const auto r = reinterpret_cast<uintptr_t>(returnAddress);
-    if (g_started || r < g_textBegin || r >= g_textEnd) return;
-    if (InterlockedCompareExchange(&g_started, 1, 0) != 0) return;
-    StartPlugins();
+    if (r < g_textBegin || r >= g_textEnd || GetCurrentThreadId() != g_gameThread) return;
+    if (!g_started) {
+        g_started = 1;
+        StartPlugins();
+        HostLog("loader", "plugins started from %s on the game's main thread", source);
+        return;
+    }
+    if (g_tickCount == 0) return;
+    const DWORD now = GetTickCount();
+    if (now - g_lastTick < 50) return;
+    g_lastTick = now;
+    if (!g_tickSource) {
+        g_tickSource = source;
+        HostLog("loader", "first tick, from %s", source);
+    }
+    for (LONG i = 0; i < g_tickCount; ++i) g_ticks[i]();
 }
 
 UINT WINAPI WrapTimeBeginPeriod(UINT period) {
-    MaybeStart(_ReturnAddress());
+    OnGameCall(_ReturnAddress(), "timeBeginPeriod");
     return g_timeBeginPeriod(period);
 }
 
 UINT WINAPI WrapTimeEndPeriod(UINT period) {
-    MaybeStart(_ReturnAddress());
+    OnGameCall(_ReturnAddress(), "timeEndPeriod");
     return g_timeEndPeriod(period);
 }
 
 DWORD WINAPI WrapTimeGetTime() {
-    MaybeStart(_ReturnAddress());
+    OnGameCall(_ReturnAddress(), "timeGetTime");
     return g_timeGetTime();
 }
 
+BOOL WINAPI WrapQueryPerformanceCounter(LARGE_INTEGER* counter) {
+    OnGameCall(_ReturnAddress(), "QueryPerformanceCounter");
+    return g_qpc(counter);
+}
+
+DWORD WINAPI WrapMsgWaitForMultipleObjects(DWORD count, const HANDLE* handles, BOOL all, DWORD ms, DWORD mask) {
+    OnGameCall(_ReturnAddress(), "MsgWaitForMultipleObjects");
+    return g_msgWait(count, handles, all, ms, mask);
+}
+
+BOOL WINAPI WrapTranslateMessage(const MSG* msg) {
+    OnGameCall(_ReturnAddress(), "TranslateMessage");
+    return g_translate(msg);
+}
+
 template <typename Fn>
-void Hook(const char* function, void* wrapper, Fn* original) {
-    const uintptr_t old = HookImport(g_exeBase, "WINMM.dll", function, wrapper);
+void Hook(const char* dll, const char* function, void* wrapper, Fn* original) {
+    const uintptr_t old = HookImport(g_exeBase, dll, function, wrapper);
     if (!old) return;
     *original = reinterpret_cast<Fn>(old);
     ++g_hooked;
@@ -273,8 +316,13 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID) {
     InitializeCriticalSection(&g_logLock);
     g_exeBase = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
     if (!FindTextSection(g_exeBase)) return TRUE;
-    Hook("timeBeginPeriod", reinterpret_cast<void*>(&WrapTimeBeginPeriod), &g_timeBeginPeriod);
-    Hook("timeGetTime", reinterpret_cast<void*>(&WrapTimeGetTime), &g_timeGetTime);
-    Hook("timeEndPeriod", reinterpret_cast<void*>(&WrapTimeEndPeriod), &g_timeEndPeriod);
+    // DllMain of a DLL the exe imports runs on the process's initial thread: the game's main thread.
+    g_gameThread = GetCurrentThreadId();
+    Hook("WINMM.dll", "timeBeginPeriod", reinterpret_cast<void*>(&WrapTimeBeginPeriod), &g_timeBeginPeriod);
+    Hook("WINMM.dll", "timeGetTime", reinterpret_cast<void*>(&WrapTimeGetTime), &g_timeGetTime);
+    Hook("WINMM.dll", "timeEndPeriod", reinterpret_cast<void*>(&WrapTimeEndPeriod), &g_timeEndPeriod);
+    Hook("KERNEL32.dll", "QueryPerformanceCounter", reinterpret_cast<void*>(&WrapQueryPerformanceCounter), &g_qpc);
+    Hook("USER32.dll", "MsgWaitForMultipleObjects", reinterpret_cast<void*>(&WrapMsgWaitForMultipleObjects), &g_msgWait);
+    Hook("USER32.dll", "TranslateMessage", reinterpret_cast<void*>(&WrapTranslateMessage), &g_translate);
     return TRUE;
 }

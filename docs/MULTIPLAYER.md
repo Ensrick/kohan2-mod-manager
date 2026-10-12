@@ -60,11 +60,15 @@ needs the sync log of a second player from the same match.
    not receive from another stock game (this rules out raising the transfer block size, above).
 3. **Use the engine's own routines in the contexts the engine uses them**, and check the bytes of every
    function called or patched first: after a game update, features whose bytes moved stay off.
-4. **One switch and one log line per feature.** `Mods\k2mp.ini` `[features]` turns each off; everything
+4. **Game state only on the game's own thread**: inside a hook, or in `K2Plugin_Tick` (called by the loader on the
+   thread that started the plugins). A plugin thread that wrote the game's settings while the game was still
+   building them crashed a test copy at start-up (2026-10-12); the game's data is not guarded against other
+   threads.
+5. **One switch and one log line per feature.** `Mods\k2mp.ini` `[features]` turns each off; everything
    goes to `Mods\plugins.log`.
-5. **Offline tests for every patch**: `native\test\run_all.ps1` (hook stubs exercised the way the game
+6. **Offline tests for every patch**: `native\test\run_all.ps1` (hook stubs exercised the way the game
    calls them, every signature against a decrypted exe, the loader with a stand-in game).
-6. **A real two-player match before any player sees it**: `tests\rig\Run-Rig.ps1` runs two copies of the
+7. **A real two-player match before any player sees it**: `tests\rig\Run-Rig.ps1` runs two copies of the
    game against each other on one PC (LAN, scripted, minimized). See `tests/rig/README.md`.
 
 ## Plan and status

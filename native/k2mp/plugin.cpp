@@ -2,13 +2,18 @@
 
 #include <windows.h>
 #include <bcrypt.h>
+#include <shlobj.h>
 #include <cstdarg>
 #include <cstdio>
 #include <thread>
 
+#include "game.h"
+#include "hook.h"
 #include "k2plugin.h"
 
 #pragma comment(lib, "bcrypt.lib")
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "ole32.lib")
 
 namespace k2mp {
 
@@ -21,6 +26,55 @@ void Log(const char* fmt, ...) {
     _vsnprintf_s(line, _TRUNCATE, fmt, ap);
     va_end(ap);
     if (g.host && g.host->log) g.host->log("k2mp", "%s", line);
+}
+
+namespace {
+
+// The engine string holding the personal folder ("C:/Users/<name>/Documents/Kohan2"), copied into `buf`. SEH: reads
+// game memory. Returns 0 on success, else why not: 1 the code differs, 2 the read faulted, 3 the value is empty.
+int ReadPersonalFolder(uintptr_t base, wchar_t* buf, size_t count) {
+    buf[0] = 0;
+    const char* const needs[] = {"user data token"};
+    if (!hook::SignaturesMatch(base, needs, 1)) return 1;
+    __try {
+        // `push dword ptr [imm32]` (FF 35 imm32): the operand is the address of the string's pointer, relocated.
+        const auto* global = *reinterpret_cast<wchar_t* const* const*>(base + game::kUserDataToken + 2);
+        const wchar_t* text = *global;
+        if (!text || !text[0]) return 3;
+        wcsncpy_s(buf, count, text, _TRUNCATE);
+        return 0;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        buf[0] = 0;
+        return 2;
+    }
+}
+
+}  // namespace
+
+std::wstring UserDataDir() {
+    static volatile LONG logged = 0;
+    wchar_t personal[MAX_PATH];
+    std::wstring dir;
+    // The test rig gives each copy its own Documents folder (tests/rig, K2_RIG_DOCUMENTS); the game keeps writing its
+    // saves there, but its personal-folder value reads as the real Documents later on, so the rig's value wins here.
+    wchar_t rig[MAX_PATH];
+    const DWORD rigLen = GetEnvironmentVariableW(L"K2_RIG_DOCUMENTS", rig, MAX_PATH);
+    const int why = rigLen > 0 && rigLen < MAX_PATH ? -1 : ReadPersonalFolder(g.exeBase, personal, MAX_PATH);
+    if (why == -1) {
+        dir = std::wstring(rig) + L"\\Kohan2\\data";
+    } else if (why == 0) {
+        dir = std::wstring(personal) + L"\\data";
+    } else {
+        PWSTR docs = nullptr;
+        if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &docs))) dir = std::wstring(docs) + L"\\Kohan2\\data";
+        CoTaskMemFree(docs);
+    }
+    for (wchar_t& c : dir)
+        if (c == L'/') c = L'\\';
+    if (InterlockedExchange(&logged, 1) == 0)
+        Log("user data folder: %s (%s)", Utf8(dir).c_str(),
+            why == -1 ? "test rig" : why == 0 ? "the game's" : why == 1 ? "fallback: code differs" : why == 2 ? "fallback: read faulted" : "fallback: empty");
+    return dir;
 }
 
 bool Setting(const wchar_t* name, bool fallback) {

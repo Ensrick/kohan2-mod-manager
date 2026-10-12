@@ -14,6 +14,11 @@ constexpr uint32_t kGWorld = 0x5d7fb0;           // g_gworld; the world resource
 constexpr uint32_t kResourceManager = 0x5d7fcc;  // runs resource tasks (loads, saves) on the loader thread
 constexpr uint32_t kAdminNode = 0x5d7fe4;        // this PC's network node (TGC_AdminNode)
 
+// Registers the "%USERDATA%" path token: `push dword ptr [personal folder]` (an engine string such as
+// "C:/Users/<name>/Documents/Kohan2", from SHGetFolderPathW(CSIDL_PERSONAL) + "Kohan2"). The game's work depot, where
+// saves go, is that folder's "data". The plugin reads the operand instead of working the path out itself.
+constexpr uint32_t kUserDataToken = 0x1cb1f2;
+
 // ---------------------------------------------------------------- KKC_Session
 constexpr uint32_t kSessionFilename = 0x68;  // engine string: the map or save the session plays / last saved
 constexpr uint32_t kSessionState = 0xf0;     // 2 or 4 while a match runs (GameSave refuses other states)
@@ -37,6 +42,17 @@ constexpr uint32_t kStringFromLiteral = 0x205de;     // engine string: construct
 constexpr uint32_t kStringRelease = 0x21375;         // engine string: release, ECX = data - 0x10 (thiscall)
 // TGC_AdminConn::SerializeConnect(I): the host's answer to a joining player ("Game is already in progress").
 constexpr uint32_t kSerializeConnect = 0x1506dd;
+// File transfer (TGC_FileSender / TGC_FileReceiver). The AVars settings table is reached through a global pointer whose
+// address the code below embeds: `mov eax, [table]` at kFileSenderBlockCount + 0. Entries 0x48, 0x49, 0x4a are
+// NetworkFileTransferBlocksPerFrame (20), NetworkFileTransferBlockSize (64), NetworkFileTransferMaxPendingBlocks (256);
+// each entry points at a var object whose int value is at offset 0. The receiver splits files with its own block size
+// (0x5593ea), so a block size must be the same on every PC of a game.
+constexpr uint32_t kFileSenderBlockCount = 0x158ca4;  // TGC_FileSender: number of blocks of the file being sent
+constexpr uint32_t kFileSenderFill = 0x158ef4;        // TGC_FileSender: queue blocks up to MaxPendingBlocks
+constexpr int kVarBlocksPerFrame = 0x48;
+constexpr int kVarBlockSize = 0x49;
+constexpr int kVarMaxPendingBlocks = 0x4a;
+
 // KKC_JoinDirectDialog's join handler (0x4eedb8) reads the IP and port editboxes with the widget text getter
 // (thiscall, returns the address of the widget's engine string). Only the test rig redirects these two calls.
 constexpr uint32_t kWidgetText = 0x29f774;
@@ -86,6 +102,12 @@ inline constexpr Signature kSignatures[] = {
      "8b d1 83 c8 ff f0 0f c1 42 0c 48 85 c0 7f 08 8b 0a 52 8b 01 ff 50 04 c3"},
     {"TGC_AdminConn::SerializeConnect", kSerializeConnect,
      "b8 ?? ?? ?? ?? e8 f5 06 29 00 81 ec 8c 00 00 00 a1 ?? ?? ?? ?? 53 56 8b"},
+    // mov eax, [AVars table]; push esi; push edi; mov edi, [ecx+0x48]; mov eax, [eax+0x124] (block size); mov ecx, [ecx+0x2c]
+    {"file sender block count", kFileSenderBlockCount, "a1 ?? ?? ?? ?? 56 57 8b 79 48 8b 80 24 01 00 00 8b 49 2c 8b 30"},
+    // mov edx, [AVars table]; push ebx; push ebp; mov ebx, ecx; mov eax, [edx+0x128] (max pending); push esi; push edi
+    {"file sender fill", kFileSenderFill, "8b 15 ?? ?? ?? ?? 53 55 8b d9 8b 82 28 01 00 00 56 57 8b 28 8b 82 24 01"},
+    // push dword ptr [personal folder]; mov ecx, [esp+8]; push "%USERDATA%"; call; ret 4
+    {"user data token", kUserDataToken, "ff 35 ?? ?? ?? ?? 8b 4c 24 08 68 ?? ?? ?? ?? e8 1d 58 e6 ff c2 04 00"},
     // lea eax, [ecx + 0x6c]; ret
     {"widget text getter", kWidgetText, "8d 41 6c c3"},
     // mov ecx, [edi + 0xa8] (IP editbox); call text getter; mov eax, [eax]; sub eax, 0x10; push eax; call

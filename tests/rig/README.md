@@ -28,6 +28,25 @@ Script commands only run in a pipeline started with `Exec`, which is the only pl
 The game writes each script line to its log twice: `(Echo ...)` when it queues the script, and
 `APP:  ...` when the `Echo` runs.
 
+## Keeping the player's game untouched
+
+Early runs used the player's own `Documents\Kohan2` and a full-screen window, and that went wrong in
+four ways, now all prevented:
+
+| What happened | Why | Now |
+|---|---|---|
+| A setting given on the command line ended up in the player's settings | the game saves its settings to `Documents\Kohan2\data\User\UVars.tgi` on exit | each copy has its own Documents folder |
+| The player's last five replays were replaced by test matches | every match is recorded over the oldest `Films\LastFilm_<n>.RFM` | same |
+| The mouse was held inside a test window | the copies inherited the player's full-screen setting | each copy's own settings: `ResolutionWindowed`, 800x600, `MouseClipCursor = false`, muted |
+| The player's newest match logs were deleted | the game keeps only about ten logs in `<game>\Logs` | they are copied to `%LOCALAPPDATA%\Kohan2RigLogBackup` before each run |
+
+Each copy's Documents folder comes from a test-only `shfolder.dll` (native/test/rig_shfolder.cpp):
+the game finds its user folder with `LoadLibrary("shfolder.dll")` + `SHGetFolderPathW` (0x6ffea0),
+Windows takes that DLL from the game folder first, and the stand-in answers with `K2_RIG_DOCUMENTS`.
+`Run-Rig.ps1` copies it in for the run and deletes it afterwards. The folders live under
+`%LOCALAPPDATA%\Kohan2Rig` and hold a copy of the player's game data (loose mods included, so both copies
+load the same data) without saves, replays, sync logs or settings.
+
 ## Game bug found here
 
 `WaitState <state>` crashes the game (access violation in `KKC_CommandPipelineWaitState::IsReady`,

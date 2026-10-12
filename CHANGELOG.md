@@ -2,6 +2,32 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.1.0-beta.8] - unreleased
+
+### Fixed
+- Plugins start and tick only on the game's main thread (the thread that loads the loader). The loader also
+  watches `QueryPerformanceCounter`, `MsgWaitForMultipleObjects` and `TranslateMessage` calls from the game's code,
+  since timer calls alone did not reach the main thread regularly. Plugin API: optional `K2Plugin_Tick`, called on
+  that thread at most every 50 ms; game state is only to be changed there or inside a hook. Found the hard way: a
+  plugin thread that wrote the game's settings while the game was still building them crashed a test copy.
+- Multiplayer Fixes finds the game's save folder from the game itself (its "%USERDATA%" value) instead of working
+  out Documents on its own, and logs which folder it uses.
+
+### Added
+- Multiplayer Fixes 0.2.0-dev.3, experimental `[transfer]` settings in `Mods\k2mp.ini` (`blocks_per_frame`,
+  `block_size`, `max_pending_blocks`; off unless set) for measuring the game's own save transfer on the rig.
+- Test rig: each copy of the game gets its own Documents folder (test-only `shfolder.dll`, `K2_RIG_DOCUMENTS`), a
+  small window moved off the screen that never takes the focus or the mouse, no sound; a `Transfer` scenario that
+  measures how fast the game sends a save to a player without it.
+
+### Found
+- The game sends a save at about 2 KB/s: 214-223 KB in 104-109 s in three runs between two copies on one PC, so a
+  900 KB save takes about 7.5 minutes.
+- Early rig runs used the player's own Documents and full-screen settings: a command-line setting
+  (`RunWhenInactive`) was saved into the player's settings (removed again), test matches replaced the player's
+  five "LastFilm" replays, a full-screen test window held the mouse, and the game's log rotation removed the
+  player's newest match logs. All prevented now (`tests/rig/README.md`).
+
 ## [0.1.0-beta.7] - unreleased
 
 ### Fixed

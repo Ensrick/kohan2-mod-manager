@@ -23,3 +23,9 @@ typedef struct K2Host {
 // off; the loader logs the result either way and never unloads a plugin.
 typedef int(__cdecl* K2PluginStartFn)(const K2Host* host);
 #define K2_PLUGIN_START "K2Plugin_Start"
+
+// Optional export (extern "C", __cdecl): called on the game's own thread (the one that started the plugins) from its
+// timer calls, at most every 50 ms, for as long as the game runs. The place to read or change game state: never do
+// that from a thread of the plugin's own, the game's data is not guarded against other threads.
+typedef void(__cdecl* K2PluginTickFn)(void);
+#define K2_PLUGIN_TICK "K2Plugin_Tick"

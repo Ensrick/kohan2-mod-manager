@@ -1,0 +1,5 @@
+; Test rig stand-in for shfolder.dll (rig_shfolder.cpp). Same two exports as the system DLL.
+LIBRARY shfolder
+EXPORTS
+    SHGetFolderPathA = RigSHGetFolderPathA @1
+    SHGetFolderPathW = RigSHGetFolderPathW @2

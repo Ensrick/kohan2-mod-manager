@@ -42,8 +42,8 @@ k2_version_rc(loader "loader" "avifil32.dll" "Kohan II Plugin Loader"
     "${LOADER_VERSION}")
 
 # ---------------------------------------------------------------- plugin: Multiplayer Fixes
-set(K2MP_VERSION "0.2.0-dev.2")
-set(K2MP_CORE k2mp/hook.cpp k2mp/plugin.cpp k2mp/rig.cpp k2mp/savecopy.cpp)
+set(K2MP_VERSION "0.2.0-dev.3")
+set(K2MP_CORE k2mp/hook.cpp k2mp/plugin.cpp k2mp/rig.cpp k2mp/savecopy.cpp k2mp/transfer.cpp)
 add_library(k2mp SHARED k2mp/k2mp.cpp ${K2MP_CORE})
 target_include_directories(k2mp PRIVATE include)
 target_compile_definitions(k2mp PRIVATE ${COMMON_DEFS} K2MP_VERSION="${K2MP_VERSION}")
@@ -73,3 +73,11 @@ target_include_directories(hooktest PRIVATE include)
 target_compile_definitions(hooktest PRIVATE ${COMMON_DEFS} K2MP_VERSION="${K2MP_VERSION}")
 target_compile_options(hooktest PRIVATE ${COMMON_OPTS})
 target_link_options(hooktest PRIVATE /SAFESEH:NO /INCREMENTAL:NO)
+
+# Test rig only: a stand-in shfolder.dll that gives one copy of the game its own Documents folder (K2_RIG_DOCUMENTS).
+# tests/rig/Run-Rig.ps1 copies it into the game folder for a run and deletes it afterwards. Never shipped.
+add_library(rig_shfolder SHARED test/rig_shfolder.cpp test/rig_shfolder.def)
+set_target_properties(rig_shfolder PROPERTIES OUTPUT_NAME shfolder
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/rig RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/rig)
+target_compile_definitions(rig_shfolder PRIVATE ${COMMON_DEFS})
+target_compile_options(rig_shfolder PRIVATE ${COMMON_OPTS})

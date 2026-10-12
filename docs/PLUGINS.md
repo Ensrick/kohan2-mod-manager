@@ -45,7 +45,10 @@ In any process other than `k2.exe` the loader is a plain `avifil32.dll`.
 
 See [`native/include/k2plugin.h`](../native/include/k2plugin.h). A plugin:
 
-- is a 32-bit DLL exporting `int __cdecl K2Plugin_Start(const K2Host*)` (0 = running);
+- is a 32-bit DLL exporting `int __cdecl K2Plugin_Start(const K2Host*)` (0 = running), and optionally
+  `void __cdecl K2Plugin_Tick(void)`, which the loader calls on the game's own thread (the one that started
+  the plugins) at most every 50 ms. Read or change game state only there or inside a hook, never from a
+  thread of the plugin's own: the game's data is not guarded against other threads;
 - finds its way around `k2.exe` by RVA: the exe is relocated (ASLR), so address = `exeBase + RVA`;
 - checks the bytes at every place it patches before patching, skipping (`??`) the bytes relocation
   changes, and stays off if they differ (a game update moved things);

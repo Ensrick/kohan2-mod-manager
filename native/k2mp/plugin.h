@@ -9,13 +9,17 @@ namespace k2mp {
 
 struct Context {
     uintptr_t exeBase = 0;
-    std::wstring gameDir;      // folder of k2.exe
-    std::wstring modsDir;      // <game>\Mods
-    std::wstring userDataDir;  // Documents\Kohan2\data, where the game writes saves (its "work depot")
+    std::wstring gameDir;  // folder of k2.exe
+    std::wstring modsDir;  // <game>\Mods
     const K2Host* host = nullptr;
 };
 
 extern Context g;
+
+// The game's work depot (where it writes saves): its own "%USERDATA%" folder + "\data", read from the game, so it is
+// right whatever Windows says Documents is (redirected folders, the test rig). Falls back to Documents\Kohan2\data
+// when the game's value cannot be read. Call it after start-up, not from K2Plugin_Start.
+std::wstring UserDataDir();
 
 // One line in Mods\plugins.log, prefixed "k2mp". printf-style, UTF-8; %ls for wide strings.
 void Log(const char* fmt, ...);

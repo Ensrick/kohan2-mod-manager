@@ -4,7 +4,6 @@
 // on an unknown k2.exe):
 //   save_copies   every player's game keeps a copy of each multiplayer save (savecopy.h)
 #include <windows.h>
-#include <shlobj.h>
 #include <cstdio>
 #include <cstring>
 
@@ -14,19 +13,11 @@
 #include "plugin.h"
 #include "rig.h"
 #include "savecopy.h"
+#include "transfer.h"
 
-#pragma comment(lib, "shell32.lib")
-#pragma comment(lib, "ole32.lib")
 
 namespace {
 
-std::wstring DocumentsDir() {
-    PWSTR p = nullptr;
-    std::wstring o;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &p))) o = p;
-    CoTaskMemFree(p);
-    return o;
-}
 
 }  // namespace
 
@@ -57,7 +48,6 @@ extern "C" __declspec(dllexport) int __cdecl K2Plugin_Start(const K2Host* host) 
     k2mp::g.exeBase = host->exeBase;
     k2mp::g.gameDir = host->gameDir;
     k2mp::g.modsDir = host->modsDir;
-    k2mp::g.userDataDir = DocumentsDir() + L"\\Kohan2\\data";
     k2mp::Log("Multiplayer Fixes %s", K2MP_VERSION);
 
     char report[4096] = {};
@@ -84,10 +74,17 @@ extern "C" __declspec(dllexport) int __cdecl K2Plugin_Start(const K2Host* host) 
     } else
         k2mp::Log("save copies: not available for this k2.exe");
 
+    if (transfer::Install(host->exeBase)) {  // experimental: only with [transfer] keys in Mods\k2mp.ini
+        k2mp::Log("transfer settings: configured (applied on the game's thread once its settings table is built)");
+        ++on;
+    }
     rig::Install(host->exeBase);  // test rig only: does nothing unless K2MP_RIG_JOIN is set
     k2mp::Log("%d feature(s) on", on);
     return on > 0 ? 0 : 1;
 }
+
+// Runs on the game's own thread (see k2plugin.h): every change to game state that is not made inside a hook goes here.
+extern "C" __declspec(dllexport) void __cdecl K2Plugin_Tick() { transfer::Tick(); }
 
 BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) DisableThreadLibraryCalls(self);

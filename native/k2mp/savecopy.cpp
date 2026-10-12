@@ -130,7 +130,7 @@ int WriteCopy(const wchar_t* copyName, DWORD* exceptionCode) {
 }
 
 std::wstring OnDisk(const std::wstring& relative) {
-    std::wstring p = k2mp::g.userDataDir + L"\\" + relative;
+    std::wstring p = k2mp::UserDataDir() + L"\\" + relative;
     for (wchar_t& c : p)
         if (c == L'/') c = L'\\';
     return p;
