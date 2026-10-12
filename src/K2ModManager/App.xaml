@@ -8,17 +8,21 @@
     <SolidColorBrush x:Key="Paper" Color="#F6F1E7" />
     <SolidColorBrush x:Key="Panel" Color="#FFFDF8" />
     <SolidColorBrush x:Key="Line" Color="#D9CDB6" />
-    <SolidColorBrush x:Key="Header" Color="#33271B" />
-    <SolidColorBrush x:Key="Accent" Color="#3C7A3A" />
-    <SolidColorBrush x:Key="AccentHover" Color="#2F6630" />
+    <!-- Kohan II blue and gold, sampled from the game's menu textures (UI/1280/Default/PushButton, Panel) -->
+    <SolidColorBrush x:Key="Header" Color="#102040" />
+    <SolidColorBrush x:Key="Accent" Color="#2050B0" />
+    <SolidColorBrush x:Key="AccentHover" Color="#2C62CC" />
+    <SolidColorBrush x:Key="AccentEdge" Color="#14306E" />
+    <SolidColorBrush x:Key="Gold" Color="#B09030" />
+    <SolidColorBrush x:Key="GoldText" Color="#F4D27A" />
 
     <Style TargetType="Button">
       <Setter Property="FontSize" Value="15" />
       <Setter Property="Padding" Value="16,7" />
       <Setter Property="Margin" Value="0,0,8,0" />
-      <Setter Property="Foreground" Value="{StaticResource Ink}" />
-      <Setter Property="Background" Value="#EFE6D4" />
-      <Setter Property="BorderBrush" Value="#BFAF92" />
+      <Setter Property="Foreground" Value="{StaticResource GoldText}" />
+      <Setter Property="Background" Value="{StaticResource Accent}" />
+      <Setter Property="BorderBrush" Value="{StaticResource AccentEdge}" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="Template">
         <Setter.Value>
@@ -29,7 +33,7 @@
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="B" Property="Background" Value="#E5D9C2" />
+                <Setter TargetName="B" Property="Background" Value="{StaticResource AccentHover}" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="B" Property="Opacity" Value="0.45" />
@@ -44,14 +48,14 @@
       <Setter Property="FontSize" Value="17" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Padding" Value="26,10" />
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{StaticResource GoldText}" />
       <Setter Property="Background" Value="{StaticResource Accent}" />
-      <Setter Property="BorderBrush" Value="{StaticResource AccentHover}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Gold}" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
             <Border x:Name="B" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="1" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                    BorderThickness="2" CornerRadius="6" Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
             <ControlTemplate.Triggers>
@@ -69,7 +73,7 @@
 
     <Style x:Key="Link" TargetType="Button">
       <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="Foreground" Value="#E9D9B4" />
+      <Setter Property="Foreground" Value="{StaticResource GoldText}" />
       <Setter Property="FontSize" Value="13" />
       <Setter Property="Template">
         <Setter.Value>

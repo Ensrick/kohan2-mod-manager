@@ -52,7 +52,7 @@ namespace K2ModManager
         [DllImport("shell32.dll")]
         static extern void SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);
 
-        const string IconVersion = "1";
+        const string IconVersion = "2";
 
         /// <summary>Double-clicking a .k2mod file opens it in this program (current user only, no admin needed).</summary>
         public static void RegisterFileType()

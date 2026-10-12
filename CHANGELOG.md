@@ -16,10 +16,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   the same patches as kohan2-battleborn's `tools/bbpatch.py` (all 127 Battleborn patches
   identical) and builds Battleborn byte-identical to its Python build.
 - One managed startup script, `startup\autoexec_mods.txt`, with an `addmod` line per mod.
-- Icon (2026-10-11): gold-rimmed crimson shield with "K2" ("MODS" ribbon from 48 px up),
-  on the exe, both windows and `.k2mod` files. Drawn by `art/make_icon.py` (Pillow, Georgia
-  Bold / Segoe UI Black); the `.k2mod` registration re-announces itself once per icon
-  version so Explorer redraws files registered before the icon existed.
+- Icon (2026-10-11): gold-rimmed Kohan II blue shield with gold "K2" ("MODS" ribbon from
+  48 px up), on the exe, both windows and `.k2mod` files. Drawn by `art/make_icon.py`
+  (Pillow, Georgia Bold / Segoe UI Black); the `.k2mod` registration re-announces itself
+  once per icon version so Explorer redraws files registered before the icon changed.
+- Kohan II colours (2026-10-11): blue buttons with gold lettering (the main button gets a
+  gold edge), navy header with a gold title, sampled from the game's own menu textures
+  (`UI/1280/Default/PushButton`, `Panel`). Replaces the green and beige buttons.
 - `k2mod test` (2026-10-11): unattended start-up test. Starts k2.exe minimized with the
   Steam app id in its environment (nothing written to the game folder), reads the live log:
   any `ERROR:` line (clean starts log none) is a failure, "(init time) command line

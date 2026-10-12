@@ -1,4 +1,4 @@
-"""Draws the Kohan II Mod Manager icon: a gold-rimmed crimson heater shield with "K2",
+"""Draws the Kohan II Mod Manager icon: a gold-rimmed blue heater shield with gold "K2",
 plus a "MODS" ribbon at the larger sizes. Writes src/K2ModManager/K2ModManager.ico
 (16-256 px) and art/icon_preview.png. Needs Pillow; uses Georgia Bold and Segoe UI Black from Windows.
 
@@ -14,11 +14,12 @@ FONT = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "georgiab.
 SMALL_FONT = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "seguibl.ttf")   # Segoe UI Black
 SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 
-CRIMSON_TOP = (150, 22, 30)
-CRIMSON_BOTTOM = (88, 10, 18)
+# blues and gold sampled from the game's own menu textures (UI/1280/Default/PushButton, Panel)
+BLUE_TOP = (48, 84, 184)
+BLUE_BOTTOM = (16, 32, 96)
 GOLD = (232, 188, 82)
 GOLD_DARK = (150, 104, 30)
-INK = (40, 6, 10)
+INK = (10, 16, 48)
 
 
 def shield(w, h, inset):
@@ -90,7 +91,7 @@ def render(size, ribbon):
     d.polygon([(x + left, y) for x, y in shield(w, S, S * 0.03 + rim * 0.35)], fill=GOLD)
     mask = Image.new("L", (S, S), 0)
     ImageDraw.Draw(mask).polygon(inner, fill=255)
-    img.paste(gradient(S, S, CRIMSON_TOP, CRIMSON_BOTTOM), (0, 0), mask)
+    img.paste(gradient(S, S, BLUE_TOP, BLUE_BOTTOM), (0, 0), mask)
 
     d = ImageDraw.Draw(img)
     inner_w = w - 2 * (S * 0.03 + rim)
