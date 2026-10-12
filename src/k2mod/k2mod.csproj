@@ -5,7 +5,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>k2mod</AssemblyName>
     <RootNamespace>K2ModCli</RootNamespace>
-    <Version>0.1.0-beta.6</Version>
+    <Version>0.1.0-beta.7</Version>
     <Product>Kohan II Mod Manager</Product>
     <Copyright>Copyright (c) 2026 Ensrick. MIT License.</Copyright>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
@@ -19,7 +19,7 @@
   </ItemGroup>
   <!-- Game plugins (native/, built by native\build.ps1). Left out when they have not been built: the manager then lists no plugins. -->
   <ItemGroup>
-    <EmbeddedResource Include="..\..\native\build\Release\winmm.dll" LogicalName="plugins.winmm.dll" Condition="Exists('..\..\native\build\Release\winmm.dll')" />
+    <EmbeddedResource Include="..\..\native\build\Release\avifil32.dll" LogicalName="plugins.avifil32.dll" Condition="Exists('..\..\native\build\Release\avifil32.dll')" />
     <EmbeddedResource Include="..\..\native\build\Release\k2mp.dll" LogicalName="plugins.k2mp.dll" Condition="Exists('..\..\native\build\Release\k2mp.dll')" />
   </ItemGroup>
 </Project>

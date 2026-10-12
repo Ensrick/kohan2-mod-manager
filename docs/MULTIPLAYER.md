@@ -64,20 +64,38 @@ needs the sync log of a second player from the same match.
    goes to `Mods\plugins.log`.
 5. **Offline tests for every patch**: `native\test\run_all.ps1` (hook stubs exercised the way the game
    calls them, every signature against a decrypted exe, the loader with a stand-in game).
+6. **A real two-player match before any player sees it**: `tests\rig\Run-Rig.ps1` runs two copies of the
+   game against each other on one PC (LAN, scripted, minimized). See `tests/rig/README.md`.
 
 ## Plan and status
 
 | # | Change | Status |
 |---|---|---|
 | 1 | **Game files code** in the manager: one short code per install from the data the game actually loads (archives, mods and loose files), and a report two players can compare. Catches the data mismatches the join check misses. Definition: [FINGERPRINT.md](FINGERPRINT.md). | built, manager 0.1.0-beta.6 |
-| 2 | **Save copies** (`save_copies`): every non-host PC writes `<save> (copy).RSG` when the host saves, with the engine's own save task while the game is paused for the host's save. Host and players log the SHA-256 of their files. | built, k2mp 0.2.0-dev.1; needs a two-player test |
-| 3 | **Use the copy when reloading**: when the host loads `X`, a player whose `X (copy)` has the host's checksum uses it instead of downloading; a different `X` is moved aside and downloaded instead of refused. | planned, after 2 is tested |
+| 2 | **Save copies** (`save_copies`): every non-host PC writes `<save> (copy).RSG` when the host saves, with the engine's own save task while the game is paused for the host's save. Host and players log the SHA-256 of their files. | built; works in a two-player LAN match on the test rig (below); not yet in an online match |
+| 3 | **No more refused reloads**: a player whose own `X` differs from the host's is told "Your version of X is different" and cannot load; move such a file aside and download the host's instead. (Reusing copies by checksum is out: copies are never byte-identical, see below.) | planned |
 | 4 | **Fast save delivery** between players who both have the plugin, on a private Steam channel; players without it keep the game's own transfer. | planned |
 | 5 | **Host autosave** every few minutes, so a crash loses minutes at most. | planned (the script-based autosave in 0.1.0-beta.2 is the stopgap) |
 | 6 | **Rejoin a running match** after a drop. | planned |
 | 7 | **Desync cause** of the early desyncs. | needs a second player's sync log |
 
-## Testing save copies (k2mp 0.2.0-dev.1)
+## Save copies: first real match (test rig, 2026-10-12)
+
+`tests\rig\Run-Rig.ps1`, two copies of the game on one PC in a LAN match, k2mp 0.2.0-dev.2:
+
+- The client joined, the host saved 60 s into the match with `GameSave`, the client's game wrote
+  `Rig Test (copy).RSG` in 16 ms while paused for the host's save, and the match went on. No error.
+- A save is a TGCK chunk file of 20 zlib streams (1,065,204 bytes unpacked). Compared stream by stream,
+  the copy matches the host's save in 18 of them, including every large one (374 KB, 186 KB, 186 KB).
+  Stream 0 differs only in the save's own name ("Rig Test (copy)" in the copy's header); stream 13
+  (287 KB) differs in 48 bytes, all small runs of float values. No `SyncFailure` was logged, so the
+  simulation itself was identical; those bytes look like per-PC view state.
+- So a copy is never byte-identical to the host's save, and the lobby's checksum (h = h * 7 + byte over
+  the file) will always tell them apart. A copy is a working save of the same moment for whoever hosts
+  from it; the other players still get the file sent. That makes **fast save delivery (step 4) the next
+  step**, and step 3 changes: no reuse of copies by checksum.
+
+## Testing save copies with real players (k2mp 0.2.0-dev.1)
 
 Two players, both with Multiplayer Fixes ticked in the manager:
 

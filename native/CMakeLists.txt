@@ -28,22 +28,22 @@ function(k2_version_rc target id file product title comments version)
     target_sources(${target} PRIVATE ${CMAKE_BINARY_DIR}/${target}_version.rc)
 endfunction()
 
-# ---------------------------------------------------------------- the loader: winmm.dll in the game folder
-set(LOADER_VERSION "0.1.0")
-add_library(loader SHARED loader/dllmain.cpp loader/winmm.def)
-set_target_properties(loader PROPERTIES OUTPUT_NAME winmm)
+# ---------------------------------------------------------------- the loader: avifil32.dll in the game folder
+set(LOADER_VERSION "0.2.0")
+add_library(loader SHARED loader/dllmain.cpp loader/proxy.def)
+set_target_properties(loader PROPERTIES OUTPUT_NAME avifil32)
 target_include_directories(loader PRIVATE include)
 target_compile_definitions(loader PRIVATE ${COMMON_DEFS} LOADER_VERSION="${LOADER_VERSION}")
 target_compile_options(loader PRIVATE ${COMMON_OPTS})
 target_link_options(loader PRIVATE /SAFESEH:NO)
-k2_version_rc(loader "loader" "winmm.dll" "Kohan II Plugin Loader"
+k2_version_rc(loader "loader" "avifil32.dll" "Kohan II Plugin Loader"
     "Kohan II plugin loader"
     "Loads the Kohan II plugins listed in Mods\\\\plugins.txt. Installed and removed by the Kohan II Mod Manager."
     "${LOADER_VERSION}")
 
 # ---------------------------------------------------------------- plugin: Multiplayer Fixes
-set(K2MP_VERSION "0.2.0-dev.1")
-set(K2MP_CORE k2mp/hook.cpp k2mp/plugin.cpp k2mp/savecopy.cpp)
+set(K2MP_VERSION "0.2.0-dev.2")
+set(K2MP_CORE k2mp/hook.cpp k2mp/plugin.cpp k2mp/rig.cpp k2mp/savecopy.cpp)
 add_library(k2mp SHARED k2mp/k2mp.cpp ${K2MP_CORE})
 target_include_directories(k2mp PRIVATE include)
 target_compile_definitions(k2mp PRIVATE ${COMMON_DEFS} K2MP_VERSION="${K2MP_VERSION}")
@@ -55,13 +55,13 @@ k2_version_rc(k2mp "k2mp" "k2mp.dll" "Kohan II plugin"
     "${K2MP_VERSION}")
 
 # ---------------------------------------------------------------- tests
-# Stand-in for the game: an exe NAMED k2.exe that imports winmm.dll and calls timeGetTime from its own code, like the
+# Stand-in for the game: an exe NAMED k2.exe that imports avifil32.dll and winmm.dll and calls timeGetTime from its own code, like the
 # game does. test/loader_test.ps1 runs it next to the loader and checks Mods\plugins.log.
 add_executable(fake_k2 test/fake_k2.cpp)
 set_target_properties(fake_k2 PROPERTIES OUTPUT_NAME k2
     RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/fake_game RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/fake_game)
 target_compile_definitions(fake_k2 PRIVATE ${COMMON_DEFS})
-target_link_libraries(fake_k2 PRIVATE Winmm.lib)  # the SDK import library, not our loader target
+target_link_libraries(fake_k2 PRIVATE Winmm.lib Vfw32.lib)  # the SDK import libraries, not our loader target
 
 # Maps a decrypted copy of k2.exe (never runs it) and checks k2mp's signatures and call sites against it.
 add_executable(sigtest test/sigtest.cpp)

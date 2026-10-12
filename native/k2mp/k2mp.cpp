@@ -12,6 +12,7 @@
 #include "hook.h"
 #include "k2plugin.h"
 #include "plugin.h"
+#include "rig.h"
 #include "savecopy.h"
 
 #pragma comment(lib, "shell32.lib")
@@ -83,6 +84,7 @@ extern "C" __declspec(dllexport) int __cdecl K2Plugin_Start(const K2Host* host) 
     } else
         k2mp::Log("save copies: not available for this k2.exe");
 
+    rig::Install(host->exeBase);  // test rig only: does nothing unless K2MP_RIG_JOIN is set
     k2mp::Log("%d feature(s) on", on);
     return on > 0 ? 0 : 1;
 }

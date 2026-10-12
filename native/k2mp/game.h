@@ -37,6 +37,11 @@ constexpr uint32_t kStringFromLiteral = 0x205de;     // engine string: construct
 constexpr uint32_t kStringRelease = 0x21375;         // engine string: release, ECX = data - 0x10 (thiscall)
 // TGC_AdminConn::SerializeConnect(I): the host's answer to a joining player ("Game is already in progress").
 constexpr uint32_t kSerializeConnect = 0x1506dd;
+// KKC_JoinDirectDialog's join handler (0x4eedb8) reads the IP and port editboxes with the widget text getter
+// (thiscall, returns the address of the widget's engine string). Only the test rig redirects these two calls.
+constexpr uint32_t kWidgetText = 0x29f774;
+constexpr uint32_t kJoinDirectIpRead = 0x0eedd0;
+constexpr uint32_t kJoinDirectPortRead = 0x0eedf2;
 
 // ---------------------------------------------------------------- resource tasks (TGC_ResourceManagerTask)
 constexpr uint32_t kTaskRefCount = 0x04;  // interlocked; the deleting destructor (vtable slot 0) runs at 0
@@ -81,6 +86,12 @@ inline constexpr Signature kSignatures[] = {
      "8b d1 83 c8 ff f0 0f c1 42 0c 48 85 c0 7f 08 8b 0a 52 8b 01 ff 50 04 c3"},
     {"TGC_AdminConn::SerializeConnect", kSerializeConnect,
      "b8 ?? ?? ?? ?? e8 f5 06 29 00 81 ec 8c 00 00 00 a1 ?? ?? ?? ?? 53 56 8b"},
+    // lea eax, [ecx + 0x6c]; ret
+    {"widget text getter", kWidgetText, "8d 41 6c c3"},
+    // mov ecx, [edi + 0xa8] (IP editbox); call text getter; mov eax, [eax]; sub eax, 0x10; push eax; call
+    {"join direct IP read", kJoinDirectIpRead - 6, "8b 8f a8 00 00 00 e8 9f 09 1b 00 8b 00 83 e8 10 50 e8"},
+    // mov ecx, [edi + 0xac] (port editbox); xor ebx, ebx; mov [ebp-4], ebx; call text getter; mov eax, [eax]
+    {"join direct port read", kJoinDirectPortRead - 11, "8b 8f ac 00 00 00 33 db 89 5d fc e8 7d 09 1b 00 8b 00"},
 };
 // clang-format on
 
@@ -94,6 +105,8 @@ struct CallSite {
 inline constexpr CallSite kCallSites[] = {
     {"GameSave client call -> BeginSoloTask", kGameSaveClientCall, kBeginSoloTask},
     {"GameSave host call -> CreateSaveGameTask", kGameSaveHostCall, kCreateSaveGameTask},
+    {"join direct IP read -> widget text", kJoinDirectIpRead, kWidgetText},
+    {"join direct port read -> widget text", kJoinDirectPortRead, kWidgetText},
 };
 
 }  // namespace game

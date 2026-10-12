@@ -11,6 +11,7 @@
 #include <cstring>
 
 #include "../k2mp/hook.h"
+#include "../k2mp/plugin.h"
 #include "../k2mp/savecopy.h"
 
 namespace {
@@ -155,6 +156,18 @@ void TestCopyName() {
     Check(savecopy::CopyName(L"").empty(), "CopyName: refuses empty");
 }
 
+void TestLobbyChecksum() {
+    const unsigned char three[] = {1, 2, 3};
+    Check(k2mp::LobbyChecksum(three, 3) == 66, "LobbyChecksum: ((1*7)+2)*7+3 = 66");
+    Check(k2mp::LobbyChecksum(three, 3) == k2mp::LobbyChecksum(three + 1, 2, k2mp::LobbyChecksum(three, 1)),
+          "LobbyChecksum: chunked equals whole");
+    unsigned char ff[16];
+    memset(ff, 0xFF, sizeof(ff));
+    uint64_t h = 0;
+    for (int i = 0; i < 16; ++i) h = (h * 7 + 0xFF) & 0xFFFFFFFFu;
+    Check(k2mp::LobbyChecksum(ff, sizeof(ff)) == static_cast<uint32_t>(h), "LobbyChecksum: wraps at 32 bits, bytes unsigned");
+}
+
 void ExpectRegisters(const char* which) {
     char what[160];
     sprintf_s(what, "%s: ESP balanced after the call", which);
@@ -208,6 +221,7 @@ void TestHostStub() {
 int main() {
     TestMatches();
     TestCopyName();
+    TestLobbyChecksum();
     TestClientStub();
     TestHostStub();
     std::printf("%d failure(s)\n", g_failures);

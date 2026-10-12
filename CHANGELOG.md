@@ -2,6 +2,40 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.1.0-beta.7] - unreleased
+
+### Fixed
+- The plugin loader never ran: Windows applies compatibility shims to `k2.exe` (`AcSpecfc.dll`) that load
+  the system `winmm.dll` before the game's imports, so the loader's `winmm.dll` in the game folder was never
+  used (seen in the module list of a running game). The loader is now `avifil32.dll`, which `k2.exe` also
+  imports and nothing loads earlier; it forwards all 76 exports (the four interface IDs as copies) and
+  catches the game's first timer call by pointing k2.exe's own `winmm` import entries at wrappers, so it no
+  longer depends on which DLL it stands in for. The manager removes its old `winmm.dll`. Verified in the
+  real game: loader and Multiplayer Fixes start, every signature matches the running exe.
+- A second copy of the game running from the same folder logs to `Mods\plugins.2.log` instead of losing its
+  log to the first copy's open file.
+
+### Added
+- `tests/rig`: two copies of the game play a LAN match on one PC (minimized, no focus), driven by the game's
+  own script commands from the command line, to test multiplayer changes without a second player. See
+  `tests/rig/README.md`.
+- Multiplayer Fixes 0.2.0-dev.2: a test-only hook for the rig (`K2MP_RIG_JOIN=<ip>:<port>` in the
+  environment answers the Direct IP dialog's two editbox reads); nothing is installed without the variable.
+  The lobby's save checksum (h = h * 7 + byte; matches the game's value for a real save) with tests, for the
+  next steps.
+
+### Tested
+- Save copies in a real two-player LAN match on the rig: the client joined, the host saved, the client wrote
+  its copy in 16 ms, no error. The copy matches the host's save in 18 of its 20 zlib streams (all the large
+  ones); it differs in its own name and in 48 bytes of what looks like per-PC view state, so copies are never
+  byte-identical to the host's file. Details in `docs/MULTIPLAYER.md`.
+
+### Found
+- `WaitState` before the main menu crashes the game (a null entry in its app-state table); the rig avoids
+  it. The game keeps only about ten logs and deletes older ones at start-up; the rig copies them aside first.
+- In the Steam rebuild `InternetGameCreate`'s fourth argument is the game password (the usage text still
+  says "room number").
+
 ## [0.1.0-beta.6] - unreleased
 
 ### Added

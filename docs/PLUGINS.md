@@ -8,33 +8,39 @@ box; `k2mod plugin list | on <id> | off <id>` does the same from a command line.
 
 | File | What it is |
 |---|---|
-| `<game>\winmm.dll` | The plugin loader. Present only while at least one plugin is on. |
+| `<game>\avifil32.dll` | The plugin loader. Present only while at least one plugin is on. |
 | `<game>\Mods\<id>.dll` | The plugin. |
 | `<game>\Mods\plugins.txt` | The plugins the loader starts, one file name per line. Written by the manager. |
-| `<game>\Mods\plugins.log` | Written by the loader and the plugins at every game start. |
+| `<game>\Mods\plugins.log` | Written by the loader and the plugins at every game start (`plugins.2.log` ... for a second copy of the game running from the same folder). |
 
 Nothing in `Data.rwd` or any mod changes. The multiplayer join check compares data archives, not
 the exe or DLLs, so a plugin never stops anyone from joining. Whether a plugin's *behaviour* must
 match between players depends on the plugin; each says so in its description.
 
-The manager never overwrites a `winmm.dll` it did not install (it checks the file's product name):
-if another program put one in the game folder, plugins stay unavailable until that file is gone.
+The manager never overwrites an `avifil32.dll` it did not install (it checks the file's product
+name): if another program put one in the game folder, plugins stay unavailable until that file is
+gone. It removes the loader's earlier name, `winmm.dll`, when that copy is its own.
 
 ## How the loader works
 
-`k2.exe` imports three functions from `winmm.dll` (`timeBeginPeriod`, `timeGetTime`,
-`timeEndPeriod`), and `winmm.dll` is not one of the DLLs Windows always takes from System32, so
-Windows loads the copy in the game folder first. The loader passes every winmm function on to the
-real one in System32.
+`k2.exe` imports `avifil32.dll` (for its movie recorder). It is not one of the DLLs Windows always
+takes from System32, and nothing loads it earlier, so Windows loads the copy in the game folder. The
+loader passes every avifil32 function on to the real one in System32 and exports copies of its four
+interface IDs.
+
+`winmm.dll`, the first choice, does not work: Windows applies compatibility shims to `k2.exe`
+(`AcSpecfc.dll`), and they load the system `winmm.dll` before the game's own imports are resolved,
+so a copy in the game folder is never used. (Found by listing the modules of a running game.)
 
 The Steam `k2.exe` is wrapped by SteamStub: its code section is encrypted on disk and decrypted by
 a stub after Windows has loaded the imported DLLs, so a plugin cannot look at the game's code from
-`DllMain`. The loader therefore waits for the first call into one of those three functions that
-returns into `k2.exe`'s `.text` section. That proves the game's own code is running, and only then
-does it load each DLL listed in `plugins.txt` and call its `K2Plugin_Start`.
+`DllMain`. In `DllMain` the loader points k2.exe's own import entries for winmm's
+`timeBeginPeriod`, `timeGetTime` and `timeEndPeriod` at small wrappers (found by name, so they work
+whatever a shim put there; the wrappers call it). The first call that returns into `k2.exe`'s
+`.text` section proves the game's own code is running, and only then does the loader load each DLL
+listed in `plugins.txt` and call its `K2Plugin_Start`.
 
-In any process other than `k2.exe` the loader is a plain `winmm.dll`.
-
+In any process other than `k2.exe` the loader is a plain `avifil32.dll`.
 ## Writing a plugin
 
 See [`native/include/k2plugin.h`](../native/include/k2plugin.h). A plugin:
@@ -49,7 +55,7 @@ See [`native/include/k2plugin.h`](../native/include/k2plugin.h). A plugin:
 
 ## Building and testing
 
-`native\build.ps1` (Visual Studio 2022 or its Build Tools, C++ workload) builds `winmm.dll`,
+`native\build.ps1` (Visual Studio 2022 or its Build Tools, C++ workload) builds `avifil32.dll` (the loader),
 `k2mp.dll` and the tests into `native\build\Release`; the root `build.ps1` runs it first, and the
 manager embeds both DLLs. `native\test\run_all.ps1 [-DecryptedExe <path>]` runs every test:
 

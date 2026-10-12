@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 $build = Join-Path $PSScriptRoot '..\build'
 New-Item -ItemType Directory -Force (Join-Path $Work 'Mods') | Out-Null
 Copy-Item (Join-Path $build 'fake_game\k2.exe') $Work -Force
-Copy-Item (Join-Path $build 'Release\winmm.dll') $Work -Force
+Copy-Item (Join-Path $build 'Release\avifil32.dll') $Work -Force
 Copy-Item (Join-Path $build 'Release\k2mp.dll') (Join-Path $Work 'Mods') -Force
 Set-Content (Join-Path $Work 'Mods\plugins.txt') "# test`r`nk2mp.dll`r`n..\evil.dll`r`nmissing.dll`r`n" -Encoding ascii -NoNewline
 
@@ -31,5 +31,5 @@ foreach ($c in $checks.GetEnumerator()) {
     if (-not $ok) { $fail++ }
 }
 # Single files only, never a recursive delete.
-foreach ($f in 'k2.exe', 'winmm.dll', 'Mods\k2mp.dll', 'Mods\plugins.txt', 'Mods\plugins.log') { Remove-Item (Join-Path $Work $f) -ErrorAction SilentlyContinue }
+foreach ($f in 'k2.exe', 'avifil32.dll', 'Mods\k2mp.dll', 'Mods\plugins.txt', 'Mods\plugins.log') { Remove-Item (Join-Path $Work $f) -ErrorAction SilentlyContinue }
 exit $fail

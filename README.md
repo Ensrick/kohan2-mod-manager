@@ -63,7 +63,7 @@ no installation or administrator rights.
   anyone can host the match again if the host's game crashes (not yet tried in a real match). Details:
   [docs/PLUGINS.md](docs/PLUGINS.md), plan and evidence: [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
 - **What it changes:** only `<game>\Mods\` and `<game>\startup\autoexec_mods.txt`, plus
-  `<game>\user.txt` while multiplayer autosave is on and `<game>\winmm.dll` (the plugin loader)
+  `<game>\user.txt` while multiplayer autosave is on and `<game>\avifil32.dll` (the plugin loader)
   while a plugin is on. Old startup scripts it offers to turn
   off are moved to `startup\disabled\`, never deleted. Loose files in
   `Documents\Kohan2\data` override every mod; the manager warns when it finds game files

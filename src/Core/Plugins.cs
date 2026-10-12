@@ -25,8 +25,10 @@ namespace K2Mods
 
     /// <summary>
     /// Game plugins (native/ in the repository). Turning one on:
-    ///   &lt;game&gt;\winmm.dll          the plugin loader; k2.exe imports winmm.dll and Windows takes this copy from the game
-    ///                             folder first. It passes everything on to the real winmm.dll and starts the plugins.
+    ///   &lt;game&gt;\avifil32.dll       the plugin loader; k2.exe imports avifil32.dll and Windows takes this copy from the
+    ///                             game folder first. It passes everything on to the real avifil32.dll and starts the
+    ///                             plugins. (winmm.dll, used before, never loads: Windows' compatibility shims for k2.exe
+    ///                             load the system winmm.dll first.)
     ///   &lt;game&gt;\Mods\&lt;id&gt;.dll       the plugin
     ///   &lt;game&gt;\Mods\plugins.txt     the plugins the loader starts, one file name per line
     /// The loader is removed again when no plugin is on. None of these files is part of the multiplayer version check
@@ -37,7 +39,9 @@ namespace K2Mods
     {
         public const string ListName = "plugins.txt";
         public const string LogName = "plugins.log";
-        public const string LoaderName = "winmm.dll";
+        public const string LoaderName = "avifil32.dll";
+        /// <summary>Earlier names of the loader; removed when found (only copies whose ProductName is ours).</summary>
+        static readonly string[] LegacyLoaderNames = { "winmm.dll" };
         public const string LoaderProduct = "Kohan II Plugin Loader";
         /// <summary>The version resource's ProductName that marks a DLL in Mods\ as a plugin.</summary>
         public const string PluginProduct = "Kohan II plugin";
@@ -156,15 +160,27 @@ namespace K2Mods
             var problem = LoaderProblem(g);
             if (problem != null) throw new ModException(problem);
             WriteIfDifferent(LoaderPath(g), Embedded(LoaderName));
+            RemoveLegacyLoaders(g);
         }
 
-        /// <summary>Deletes the loader when it is ours. True when it was there.</summary>
+        /// <summary>Deletes the loader (and any earlier one) when it is ours. True when the current one was there.</summary>
         static bool RemoveLoader(GameInstall g)
         {
+            RemoveLegacyLoaders(g);
             var path = LoaderPath(g);
             if (!File.Exists(path) || !IsOurLoader(path)) return false;
             File.Delete(path);
             return true;
+        }
+
+        /// <summary>A loader under an earlier name (winmm.dll) does nothing but sit in the game folder: removed.</summary>
+        static void RemoveLegacyLoaders(GameInstall g)
+        {
+            foreach (var name in LegacyLoaderNames)
+            {
+                var path = Path.Combine(g.Folder, name);
+                if (File.Exists(path) && IsOurLoader(path)) File.Delete(path);
+            }
         }
 
         // ------------------------------------------------------------------ plugins.txt
@@ -190,7 +206,7 @@ namespace K2Mods
             }
             var lines = new List<string>
             {
-                ModLibrary.ScriptMarker + ": the plugins the plugin loader (winmm.dll) starts, one per line.",
+                ModLibrary.ScriptMarker + ": the plugins the plugin loader (" + LoaderName + ") starts, one per line.",
                 "# Turn plugins on and off in K2ModManager.exe instead of editing this file.",
             };
             lines.AddRange(files);

@@ -28,6 +28,26 @@ bool Setting(const wchar_t* name, bool fallback) {
     return GetPrivateProfileIntW(L"features", name, fallback ? 1 : 0, ini.c_str()) != 0;
 }
 
+uint32_t LobbyChecksum(const unsigned char* data, size_t size, uint32_t h) {
+    for (size_t i = 0; i < size; ++i) h = h * 7 + data[i];
+    return h;
+}
+
+bool LobbyChecksum(const std::wstring& path, uint32_t* checksum) {
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                           OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return false;
+    static thread_local unsigned char buf[1 << 16];
+    uint32_t h = 0;
+    DWORD got = 0;
+    bool ok = true;
+    while ((ok = ReadFile(f, buf, sizeof(buf), &got, nullptr) != 0) && got > 0) h = LobbyChecksum(buf, got, h);
+    CloseHandle(f);
+    if (!ok) return false;
+    *checksum = h;
+    return true;
+}
+
 bool HashFile(const std::wstring& path, std::string* hexDigest, uint64_t* size) {
     HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                            OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
