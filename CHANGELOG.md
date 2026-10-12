@@ -23,6 +23,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - Kohan II colours (2026-10-11): blue buttons with gold lettering (the main button gets a
   gold edge), navy header with a gold title, sampled from the game's own menu textures
   (`UI/1280/Default/PushButton`, `Panel`). Replaces the green and beige buttons.
+- Light and dark mode (2026-10-11): backgrounds, text, fields, lines, scroll bars, list
+  highlight, status and notice colours follow Windows' app mode (Settings, Personalization,
+  Colors) and switch live when it changes; the title bar goes dark too. Blue and gold stay
+  the same in both. Palettes in `src/K2ModManager/Themes/{Light,Dark}.xaml`, switching in
+  `Theme.cs`. `tests/UiPreview` takes `--dark` and `--notices`, and builds the windows in the
+  other theme first so every render also checks the live switch.
 - `k2mod test` (2026-10-11): unattended start-up test. Starts k2.exe minimized with the
   Steam app id in its environment (nothing written to the game folder), reads the live log:
   any `ERROR:` line (clean starts log none) is a failure, "(init time) command line

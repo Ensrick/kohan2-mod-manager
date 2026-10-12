@@ -18,6 +18,7 @@ namespace K2ModManager
         public AuthorWindow(GameInstall game, MainWindow main)
         {
             InitializeComponent();
+            Theme.Track(this);
             this.game = game;
             this.main = main;
             if (main.IsVisible) Owner = main;

@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 using System.Windows.Navigation;
 using K2Mods;
 
@@ -14,11 +13,11 @@ namespace K2ModManager
 {
     public sealed class ModRow
     {
-        public ModRow(InstalledMod mod, string status, Brush brush)
+        public ModRow(InstalledMod mod, string status, string statusKind)
         {
             Mod = mod;
             Status = status;
-            StatusBrush = brush;
+            StatusKind = statusKind;
         }
 
         public InstalledMod Mod { get; }
@@ -26,14 +25,13 @@ namespace K2ModManager
         public string Title => Mod.Manifest.Title;
         public string Version => Mod.Manifest.Version;
         public string Status { get; }
-        public Brush StatusBrush { get; }
+        /// <summary>Ok, Off, Warn or Bad: picks the theme's Status* colour in the list.</summary>
+        public string StatusKind { get; }
     }
 
     public partial class MainWindow : Window
     {
         enum Kind { Info, Warn, Error }
-
-        static readonly Brush OkBrush = Brushes(0x3C7A3A), OffBrush = Brushes(0x8A7E6A), WarnBrush = Brushes(0x9A6510), BadBrush = Brushes(0xA8322A);
 
         readonly string[] args;
         GameInstall game;
@@ -46,15 +44,9 @@ namespace K2ModManager
         public MainWindow(string[] args)
         {
             InitializeComponent();
+            Theme.Track(this);
             this.args = args;
             Loaded += OnLoaded;
-        }
-
-        static Brush Brushes(int rgb)
-        {
-            var b = new SolidColorBrush(Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
-            b.Freeze();
-            return b;
         }
 
         async void OnLoaded(object sender, RoutedEventArgs e)
@@ -203,7 +195,7 @@ namespace K2ModManager
                 return;
             }
 
-            var rows = lib.Mods.Select(m => new ModRow(m, StatusOf(m, out var brush), brush)).ToList();
+            var rows = lib.Mods.Select(m => new ModRow(m, StatusOf(m, out var kind), kind)).ToList();
             ModList.ItemsSource = rows;
             EmptyText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             ModList.SelectedItem = rows.FirstOrDefault(r => r.Mod.Id == selectedId) ?? rows.FirstOrDefault();
@@ -229,46 +221,46 @@ namespace K2ModManager
             ShowDetails();
         }
 
-        string StatusOf(InstalledMod m, out Brush brush)
+        string StatusOf(InstalledMod m, out string kind)
         {
             if (m.Problem != null)
             {
-                brush = BadBrush;
+                kind = "Bad";
                 return "Cannot be used: " + m.Problem.Split('\n')[0];
             }
             if (!m.Enabled)
             {
-                brush = OffBrush;
+                kind = "Off";
                 return "Off";
             }
             var missing = m.Manifest.Requires.Where(r => lib.Find(r)?.Enabled != true).ToList();
             if (missing.Count > 0)
             {
-                brush = WarnBrush;
+                kind = "Warn";
                 return "On, but it needs: " + string.Join(", ", missing.Select(r => lib.Find(r)?.Manifest.Title ?? r));
             }
             var lost = conflicts.Where(c => c.Loser == m).ToList();
             if (lost.Count > 0)
             {
-                brush = WarnBrush;
+                kind = "Warn";
                 return "On; " + string.Join("; ", lost.Select(c => $"{c.Files.Count} of its files are replaced by {c.Winner.Manifest.Title}"));
             }
-            brush = OkBrush;
+            kind = "Ok";
             return "On";
         }
 
         void AddNotice(string text, Kind kind, string button = null, Action action = null)
         {
-            var colors = kind == Kind.Error ? (0xF8DDD6, 0xD9A196) : kind == Kind.Warn ? (0xFBF0CC, 0xE2C67A) : (0xDDEBD7, 0xA9C79E);
+            var key = "Notice" + kind;          // NoticeInfo / NoticeWarn / NoticeError in Themes\*.xaml
             var border = new Border
             {
-                Background = Brushes(colors.Item1),
-                BorderBrush = Brushes(colors.Item2),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(5),
                 Padding = new Thickness(12, 8, 12, 8),
                 Margin = new Thickness(0, 0, 0, 8),
             };
+            border.SetResourceReference(Border.BackgroundProperty, key);
+            border.SetResourceReference(Border.BorderBrushProperty, key + "Edge");
             var dock = new DockPanel();
             if (button != null)
             {

@@ -1,0 +1,29 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Neutral colours for Windows' dark app mode. Same keys as Light.xaml. -->
+  <SolidColorBrush x:Key="Ink" Color="#E9E6E1" />
+  <SolidColorBrush x:Key="Muted" Color="#A8A39B" />
+  <SolidColorBrush x:Key="Paper" Color="#1E1E1E" />
+  <SolidColorBrush x:Key="Panel" Color="#2A2A2A" />
+  <SolidColorBrush x:Key="Field" Color="#2F2F2F" />
+  <SolidColorBrush x:Key="Line" Color="#454545" />
+  <SolidColorBrush x:Key="RowLine" Color="#363636" />
+  <SolidColorBrush x:Key="RowHover" Color="#1A4C82E6" />
+  <SolidColorBrush x:Key="RowSelected" Color="#404C82E6" />
+  <SolidColorBrush x:Key="Footer" Color="#262626" />
+  <SolidColorBrush x:Key="LinkText" Color="#86B6FF" />
+  <SolidColorBrush x:Key="ScrollThumb" Color="#5C5C5C" />
+  <SolidColorBrush x:Key="ScrollThumbHover" Color="#7A7A7A" />
+
+  <SolidColorBrush x:Key="StatusOk" Color="#7DC47A" />
+  <SolidColorBrush x:Key="StatusOff" Color="#9B968D" />
+  <SolidColorBrush x:Key="StatusWarn" Color="#E3B455" />
+  <SolidColorBrush x:Key="StatusBad" Color="#F2857A" />
+
+  <SolidColorBrush x:Key="NoticeInfo" Color="#1F3321" />
+  <SolidColorBrush x:Key="NoticeInfoEdge" Color="#3F6B42" />
+  <SolidColorBrush x:Key="NoticeWarn" Color="#3A3119" />
+  <SolidColorBrush x:Key="NoticeWarnEdge" Color="#7A6429" />
+  <SolidColorBrush x:Key="NoticeError" Color="#3E2521" />
+  <SolidColorBrush x:Key="NoticeErrorEdge" Color="#7C3C33" />
+</ResourceDictionary>

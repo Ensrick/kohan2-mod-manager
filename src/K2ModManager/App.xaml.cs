@@ -10,6 +10,7 @@ namespace K2ModManager
         {
             base.OnStartup(e);
             DispatcherUnhandledException += OnUnhandled;
+            Theme.FollowWindows();
             new MainWindow(e.Args).Show();
         }
 
