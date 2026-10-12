@@ -1,0 +1,215 @@
+// hooktest: offline tests of k2mp's hook layer and save-copy stubs, no game needed. Exit code 0 = all pass.
+//
+// The stubs replace the target of a `call rel32` inside k2.exe. Here each one is exercised exactly that way: a naked
+// harness performs the call the game makes (same registers, same stack arguments, same callee-pops convention), the
+// call is redirected with hook::RedirectCall, and the test checks that the original function still receives its
+// ECX and arguments, that our callback sees the session in EDI after it, and that ESP, EBX, ESI, EDI and EBP come back
+// unchanged, as the game's code after the call expects.
+#include <windows.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+
+#include "../k2mp/hook.h"
+#include "../k2mp/savecopy.h"
+
+namespace {
+
+int g_failures = 0;
+
+void Check(bool ok, const char* what) {
+    std::printf("%s %s\n", ok ? "ok  " : "FAIL", what);
+    if (!ok) ++g_failures;
+}
+
+// What the fakes and callbacks saw.
+volatile uintptr_t g_soloSelf, g_soloArg1, g_soloArg2, g_createSelf, g_createArg;
+volatile uintptr_t g_clientSession, g_hostSession;
+volatile int g_order, g_soloAt, g_createAt, g_clientAt, g_hostAt;
+// What the harness saw around the call.
+uintptr_t g_espBefore, g_espAfter, g_ebxAfter, g_esiAfter, g_ediAfter, g_ebpBefore, g_ebpAfter;
+
+// Stand-ins for the game's functions. __fastcall with an unused EDX is the free-function spelling of a thiscall:
+// ECX = this, stack arguments popped by the callee.
+void __fastcall FakeBeginSoloTask(void* self, void*, uintptr_t arg1, uintptr_t arg2) {
+    g_soloSelf = reinterpret_cast<uintptr_t>(self);
+    g_soloArg1 = arg1;
+    g_soloArg2 = arg2;
+    g_soloAt = ++g_order;
+}
+
+void __fastcall FakeCreateSaveGameTask(void* self, void*, uintptr_t flag) {
+    g_createSelf = reinterpret_cast<uintptr_t>(self);
+    g_createArg = flag;
+    g_createAt = ++g_order;
+}
+
+void __cdecl OnClient(void* session) {
+    g_clientSession = reinterpret_cast<uintptr_t>(session);
+    g_clientAt = ++g_order;
+}
+
+void __cdecl OnHost(void* session) {
+    g_hostSession = reinterpret_cast<uintptr_t>(session);
+    g_hostAt = ++g_order;
+}
+
+// The game's client branch: EDI = session, ECX = admin node, push node, push 0, call BeginSoloTask.
+__declspec(naked) void ClientHarness() {
+    __asm {
+        push ebp
+        push ebx
+        push esi
+        push edi
+        mov g_ebpBefore, ebp
+        mov edi, 0x5E55105E
+        mov ebx, 0x0B0B0B0B
+        mov esi, 0x05050505
+        mov ecx, 0x0AD0E0DE
+        mov g_espBefore, esp
+        push 0x4057
+        push 0
+        call FakeBeginSoloTask
+        mov g_espAfter, esp
+        mov g_ebxAfter, ebx
+        mov g_esiAfter, esi
+        mov g_ediAfter, edi
+        mov g_ebpAfter, ebp
+        pop edi
+        pop esi
+        pop ebx
+        pop ebp
+        ret
+    }
+}
+
+// The game's host branch: EDI = ECX = session, push 0, call CreateSaveGameTask.
+__declspec(naked) void HostHarness() {
+    __asm {
+        push ebp
+        push ebx
+        push esi
+        push edi
+        mov g_ebpBefore, ebp
+        mov edi, 0x5E55105E
+        mov ebx, 0x0B0B0B0B
+        mov esi, 0x05050505
+        mov ecx, edi
+        mov g_espBefore, esp
+        push 0
+        call FakeCreateSaveGameTask
+        mov g_espAfter, esp
+        mov g_ebxAfter, ebx
+        mov g_esiAfter, esi
+        mov g_ediAfter, edi
+        mov g_ebpAfter, ebp
+        pop edi
+        pop esi
+        pop ebx
+        pop ebp
+        ret
+    }
+}
+
+// The address of the first `call rel32` inside `fn` that lands on `target` (directly or through an incremental-link
+// jump thunk), or 0.
+uintptr_t FindCall(void* fn, void* target, uintptr_t* landsOn) {
+    auto p = reinterpret_cast<uintptr_t>(fn);
+    for (int i = 0; i < 128; ++i, ++p) {
+        uintptr_t t;
+        if (!hook::ReadCall(p, &t)) continue;
+        uintptr_t real = t;
+        if (*reinterpret_cast<unsigned char*>(t) == 0xE9) real = t + 5 + *reinterpret_cast<int32_t*>(t + 1);
+        if (real == reinterpret_cast<uintptr_t>(target) || t == reinterpret_cast<uintptr_t>(target)) {
+            *landsOn = t;
+            return p;
+        }
+    }
+    return 0;
+}
+
+void ResetSeen() {
+    g_soloSelf = g_soloArg1 = g_soloArg2 = g_createSelf = g_createArg = g_clientSession = g_hostSession = 0;
+    g_order = g_soloAt = g_createAt = g_clientAt = g_hostAt = 0;
+}
+
+void TestMatches() {
+    const unsigned char code[] = {0xB8, 0x45, 0x07, 0x83, 0x00, 0xE8, 0xFD, 0xE8};
+    const auto a = reinterpret_cast<uintptr_t>(code);
+    Check(hook::Matches(a, "b8 ?? ?? ?? ?? e8 fd e8"), "Matches: exact bytes with wildcards");
+    Check(hook::Matches(a, "B8 45 07 83 00"), "Matches: upper-case hex");
+    Check(!hook::Matches(a, "b8 ?? ?? ?? ?? e8 fd e9"), "Matches: one byte differs");
+    Check(!hook::Matches(a, "b8 4"), "Matches: odd pattern length is refused");
+    Check(!hook::Matches(0x10, "00"), "Matches: unreadable memory does not match");
+    const char* const unknown[] = {"no such signature"};
+    Check(!hook::SignaturesMatch(a, unknown, 1), "SignaturesMatch: an unknown name fails");
+}
+
+void TestCopyName() {
+    Check(savecopy::CopyName(L"Save/MP Autosave A.RSG") == L"Save/MP Autosave A (copy).RSG", "CopyName: autosave");
+    Check(savecopy::CopyName(L"Save/x.rsg") == L"Save/x (copy).rsg", "CopyName: keeps the extension's case");
+    Check(savecopy::CopyName(L"Save/../../evil.RSG").empty(), "CopyName: refuses ..");
+    Check(savecopy::CopyName(L"C:/x.RSG").empty(), "CopyName: refuses a drive");
+    Check(savecopy::CopyName(L"/x.RSG").empty(), "CopyName: refuses a rooted path");
+    Check(savecopy::CopyName(L"rmc_temperate03").empty(), "CopyName: refuses a map name");
+    Check(savecopy::CopyName(L"").empty(), "CopyName: refuses empty");
+}
+
+void ExpectRegisters(const char* which) {
+    char what[160];
+    sprintf_s(what, "%s: ESP balanced after the call", which);
+    Check(g_espAfter == g_espBefore, what);
+    sprintf_s(what, "%s: EBX, ESI, EDI, EBP preserved", which);
+    Check(g_ebxAfter == 0x0B0B0B0B && g_esiAfter == 0x05050505 && g_ediAfter == 0x5E55105E && g_ebpAfter == g_ebpBefore,
+          what);
+}
+
+void TestClientStub() {
+    uintptr_t landsOn = 0;
+    const uintptr_t site = FindCall(reinterpret_cast<void*>(&ClientHarness), reinterpret_cast<void*>(&FakeBeginSoloTask), &landsOn);
+    Check(site != 0, "client: found the harness's call");
+    if (!site) return;
+    savecopy::testing::Route(reinterpret_cast<uintptr_t>(&FakeBeginSoloTask), 0, OnClient, OnHost);
+    Check(!hook::RedirectCall(site, landsOn + 1, savecopy::testing::ClientStub()),
+          "client: RedirectCall refuses when the call goes elsewhere");
+    Check(hook::RedirectCall(site, landsOn, savecopy::testing::ClientStub()), "client: RedirectCall patches the call");
+    ResetSeen();
+    ClientHarness();
+    Check(g_soloSelf == 0x0AD0E0DE && g_soloArg1 == 0 && g_soloArg2 == 0x4057,
+          "client: the original still gets ECX and both arguments in order");
+    Check(g_clientSession == 0x5E55105E, "client: our callback gets the session from EDI");
+    Check(g_soloAt == 1 && g_clientAt == 2, "client: the original runs first, then our callback");
+    ExpectRegisters("client");
+    Check(hook::RedirectCall(site, reinterpret_cast<uintptr_t>(savecopy::testing::ClientStub()), reinterpret_cast<void*>(landsOn)),
+          "client: the patch can be undone");
+    ResetSeen();
+    ClientHarness();
+    Check(g_soloAt == 1 && g_clientAt == 0, "client: after undoing, only the original runs");
+}
+
+void TestHostStub() {
+    uintptr_t landsOn = 0;
+    const uintptr_t site =
+        FindCall(reinterpret_cast<void*>(&HostHarness), reinterpret_cast<void*>(&FakeCreateSaveGameTask), &landsOn);
+    Check(site != 0, "host: found the harness's call");
+    if (!site) return;
+    savecopy::testing::Route(0, reinterpret_cast<uintptr_t>(&FakeCreateSaveGameTask), OnClient, OnHost);
+    Check(hook::RedirectCall(site, landsOn, savecopy::testing::HostStub()), "host: RedirectCall patches the call");
+    ResetSeen();
+    HostHarness();
+    Check(g_createSelf == 0x5E55105E && g_createArg == 0, "host: the original still gets ECX and its argument");
+    Check(g_hostSession == 0x5E55105E, "host: our callback gets the session from EDI");
+    Check(g_createAt == 1 && g_hostAt == 2, "host: the original runs first, then our callback");
+    ExpectRegisters("host");
+}
+
+}  // namespace
+
+int main() {
+    TestMatches();
+    TestCopyName();
+    TestClientStub();
+    TestHostStub();
+    std::printf("%d failure(s)\n", g_failures);
+    return g_failures == 0 ? 0 : 1;
+}

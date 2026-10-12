@@ -2,6 +2,28 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.1.0-beta.5] - unreleased
+
+### Added
+- Multiplayer Fixes 0.2.0-dev.1, first real feature, **save copies** (`[features] save_copies` in
+  `Mods\k2mp.ini`, on by default): when the host saves a multiplayer match, every other player's game
+  with the plugin writes the same save as `<name> (copy).RSG`, with the engine's own save task while the
+  game is paused for the host's save anyway, so anyone can host the match again if the host's game is
+  gone. Host and players log the SHA-256 of their files to `Mods\plugins.log`, to find out whether copies
+  are byte-identical to the host's. Not yet tried in a real match (needs two players).
+- Plugin internals: every k2.exe address in one file (`native/k2mp/game.h`) with the bytes it must find;
+  features install only when all of theirs match, each with its own switch; a crash inside the engine
+  turns the feature off for the session instead of taking the game down. `native/test/run_all.ps1` runs
+  the offline tests: hook stubs exercised through real redirected calls (30 checks), every signature and
+  call site against a decrypted 1.3.68 exe (14), the loader with a stand-in game (6).
+- `docs/MULTIPLAYER.md`: what goes wrong in multiplayer (one evening of eight matches: two host crashes,
+  one freeze, four desyncs), how the engine handles saves, joins and file transfers, the rules every
+  change follows, and the plan.
+
+### Found
+- The game's file transfer cannot simply be sped up on one side: the receiver splits the file with its
+  own block size (`NetworkFileTransferBlockSize`), so a different size on the sender corrupts the file.
+
 ## [0.1.0-beta.4] - unreleased
 
 ### Added

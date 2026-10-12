@@ -52,8 +52,9 @@ no installation or administrator rights.
   [docs/MP_AUTOSAVE.md](docs/MP_AUTOSAVE.md).
 - **Game plugins (new):** the **Game plugins** list turns DLL plugins on and off. They change how
   the game program itself works and are not part of the multiplayer version check. The first one,
-  **Multiplayer Fixes**, is a work in progress (rejoining a match after dropping out); it does not
-  change the game yet. Details: [docs/PLUGINS.md](docs/PLUGINS.md).
+  **Multiplayer Fixes**, is a work in progress: every player keeps a copy of each multiplayer save, so
+  anyone can host the match again if the host's game crashes (not yet tried in a real match). Details:
+  [docs/PLUGINS.md](docs/PLUGINS.md), plan and evidence: [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
 - **What it changes:** only `<game>\Mods\` and `<game>\startup\autoexec_mods.txt`, plus
   `<game>\user.txt` while multiplayer autosave is on and `<game>\winmm.dll` (the plugin loader)
   while a plugin is on. Old startup scripts it offers to turn

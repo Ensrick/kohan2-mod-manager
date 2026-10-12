@@ -1,111 +1,90 @@
-// Multiplayer Fixes (k2mp.dll), a Kohan II plugin.
+// Multiplayer Fixes (k2mp.dll), a Kohan II plugin. docs/MULTIPLAYER.md has the design and the evidence behind it.
 //
-// Goal: players who drop out of a multiplayer match can rejoin it, the match pauses while they are gone, and nobody
-// passes saves around by hand. This first version only checks that it recognises the running k2.exe at the places it
-// will patch, and logs the result to Mods\plugins.log. It changes nothing in the game yet.
-//
-// Addresses are RVAs into k2.exe 1.3.68 (Steam, Dev Build 4345.17); the exe is relocated, so address = base + RVA.
-// Each signature skips (??) the bytes that relocation changes: absolute addresses inside the instructions.
+// Features (each needs its own signatures to match, can be turned off in Mods\k2mp.ini [features], and stays off
+// on an unknown k2.exe):
+//   save_copies   every player's game keeps a copy of each multiplayer save (savecopy.h)
 #include <windows.h>
-#include <cstdint>
+#include <shlobj.h>
 #include <cstdio>
+#include <cstring>
 
+#include "game.h"
+#include "hook.h"
 #include "k2plugin.h"
+#include "plugin.h"
+#include "savecopy.h"
+
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "ole32.lib")
 
 namespace {
 
-struct Site {
-    const char* name;
-    uint32_t rva;
-    const char* bytes;  // hex pairs, "??" = any byte
-};
-
-// clang-format off
-const Site kSites[] = {
-    // Applies a GameSave order: the host writes the save, other players pause until it is done.
-    {"KKC_Session::GameSave", 0x1624d5,
-     "b8 ?? ?? ?? ?? e8 fd e8 27 00 51 51 53 56 57 8b f9 8b 0d ?? ?? ?? ?? e8"},
-    // The host's answer to a joining player; refuses with "Game is already in progress" once a match has started.
-    {"TGC_AdminConn::SerializeConnect", 0x1506dd,
-     "b8 ?? ?? ?? ?? e8 f5 06 29 00 81 ec 8c 00 00 00 a1 ?? ?? ?? ?? 53 56 8b"},
-};
-// clang-format on
-
-bool Readable(uintptr_t addr, size_t n) {
-    MEMORY_BASIC_INFORMATION mbi;
-    if (!VirtualQuery(reinterpret_cast<void*>(addr), &mbi, sizeof(mbi)) || mbi.State != MEM_COMMIT) return false;
-    if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
-    return addr + n <= reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
-}
-
-int Hex(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
-bool Matches(uintptr_t addr, const char* pattern) {
-    size_t n = 0;
-    for (const char* p = pattern; *p; ++p)
-        if (*p != ' ') ++n;
-    if (!Readable(addr, n / 2)) return false;
-    const auto* b = reinterpret_cast<const unsigned char*>(addr);
-    for (const char* p = pattern; *p;) {
-        if (*p == ' ') {
-            ++p;
-            continue;
-        }
-        if (p[0] == '?' && p[1] == '?') {
-            p += 2;
-            ++b;
-            continue;
-        }
-        const int hi = Hex(p[0]), lo = Hex(p[1]);
-        if (hi < 0 || lo < 0 || *b != (hi << 4 | lo)) return false;
-        p += 2;
-        ++b;
-    }
-    return true;
+std::wstring DocumentsDir() {
+    PWSTR p = nullptr;
+    std::wstring o;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &p))) o = p;
+    CoTaskMemFree(p);
+    return o;
 }
 
 }  // namespace
 
-// Checks every site against the image at `base`. Returns the number of sites that do not match (0 = known build) and
-// writes one line per site into `report` when given. Exported for tests (test/sigtest.cpp maps a decrypted k2.exe).
+// Checks every signature and call site against the image at `base`. Returns how many do not match (0 = the build
+// this plugin knows) and writes one line per check into `report` when given. Exported for tests: test/sigtest.cpp
+// maps a decrypted copy of k2.exe and calls this.
 extern "C" __declspec(dllexport) int __cdecl K2Mp_CheckBuild(uintptr_t base, char* report, int reportSize) {
-    int bad = 0;
-    int used = 0;
-    for (const Site& s : kSites) {
-        const bool ok = Matches(base + s.rva, s.bytes);
+    int bad = 0, used = 0;
+    auto line = [&](bool ok, const char* name, uint32_t rva) {
         if (!ok) ++bad;
         if (report && used < reportSize) {
-            const int n = _snprintf_s(report + used, reportSize - used, _TRUNCATE, "%s %s at +0x%x\n", ok ? "ok " : "BAD",
-                                      s.name, s.rva);
+            const int n = _snprintf_s(report + used, reportSize - used, _TRUNCATE, "%s %s at +0x%x\n",
+                                      ok ? "ok " : "BAD", name, rva);
             used = n < 0 ? reportSize : used + n;
         }
+    };
+    for (const game::Signature& s : game::kSignatures) line(hook::Matches(base + s.rva, s.bytes), s.name, s.rva);
+    for (const game::CallSite& c : game::kCallSites) {
+        uintptr_t target = 0;
+        line(hook::ReadCall(base + c.site, &target) && target == base + c.target, c.name, c.site);
     }
     return bad;
 }
 
 extern "C" __declspec(dllexport) int __cdecl K2Plugin_Start(const K2Host* host) {
     if (!host || host->api != K2_PLUGIN_API) return 1;
-    host->log("k2mp", "Multiplayer Fixes %s", K2MP_VERSION);
-    char report[512] = {};
+    k2mp::g.host = host;
+    k2mp::g.exeBase = host->exeBase;
+    k2mp::g.gameDir = host->gameDir;
+    k2mp::g.modsDir = host->modsDir;
+    k2mp::g.userDataDir = DocumentsDir() + L"\\Kohan2\\data";
+    k2mp::Log("Multiplayer Fixes %s", K2MP_VERSION);
+
+    char report[4096] = {};
     const int bad = K2Mp_CheckBuild(host->exeBase, report, sizeof(report));
-    for (char* line = report; *line;) {
-        char* end = strchr(line, '\n');
-        if (end) *end = 0;
-        host->log("k2mp", "%s", line);
-        if (!end) break;
-        line = end + 1;
-    }
     if (bad) {
-        host->log("k2mp", "this k2.exe is not the build this plugin knows (1.3.68): staying off");
-        return 1;
+        for (char* line = report; *line;) {
+            char* end = strchr(line, '\n');
+            if (end) *end = 0;
+            if (strncmp(line, "BAD", 3) == 0) k2mp::Log("%s", line);
+            if (!end) break;
+            line = end + 1;
+        }
+        k2mp::Log("%d place(s) in k2.exe differ from the build this plugin knows (1.3.68): every feature that needs "
+                  "them stays off",
+                  bad);
     }
-    host->log("k2mp", "recognised k2.exe 1.3.68; nothing is changed in the game yet");
-    return 0;
+
+    int on = 0;
+    if (!k2mp::Setting(L"save_copies", true))
+        k2mp::Log("save copies: off in Mods\\k2mp.ini");
+    else if (savecopy::Install(host->exeBase)) {
+        k2mp::Log("save copies: on (this PC writes \"<save> (copy).RSG\" whenever the host saves)");
+        ++on;
+    } else
+        k2mp::Log("save copies: not available for this k2.exe");
+
+    k2mp::Log("%d feature(s) on", on);
+    return on > 0 ? 0 : 1;
 }
 
 BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID) {

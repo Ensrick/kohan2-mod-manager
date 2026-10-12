@@ -42,14 +42,16 @@ k2_version_rc(loader "loader" "winmm.dll" "Kohan II Plugin Loader"
     "${LOADER_VERSION}")
 
 # ---------------------------------------------------------------- plugin: Multiplayer Fixes
-set(K2MP_VERSION "0.1.0-dev.1")
-add_library(k2mp SHARED k2mp/k2mp.cpp)
+set(K2MP_VERSION "0.2.0-dev.1")
+set(K2MP_CORE k2mp/hook.cpp k2mp/plugin.cpp k2mp/savecopy.cpp)
+add_library(k2mp SHARED k2mp/k2mp.cpp ${K2MP_CORE})
 target_include_directories(k2mp PRIVATE include)
 target_compile_definitions(k2mp PRIVATE ${COMMON_DEFS} K2MP_VERSION="${K2MP_VERSION}")
 target_compile_options(k2mp PRIVATE ${COMMON_OPTS})
+target_link_options(k2mp PRIVATE /SAFESEH:NO)
 k2_version_rc(k2mp "k2mp" "k2mp.dll" "Kohan II plugin"
     "Multiplayer Fixes"
-    "Will let players who drop out of a multiplayer match rejoin it. Work in progress: this version only checks your k2.exe and changes nothing in the game yet."
+    "Every player keeps a copy of each multiplayer save, so anyone can host the match again if the host crashes. Work in progress: the copies are not yet tried in a real match."
     "${K2MP_VERSION}")
 
 # ---------------------------------------------------------------- tests
@@ -61,6 +63,13 @@ set_target_properties(fake_k2 PROPERTIES OUTPUT_NAME k2
 target_compile_definitions(fake_k2 PRIVATE ${COMMON_DEFS})
 target_link_libraries(fake_k2 PRIVATE Winmm.lib)  # the SDK import library, not our loader target
 
-# Maps a decrypted copy of k2.exe (never runs it) and checks k2mp's signatures against it.
+# Maps a decrypted copy of k2.exe (never runs it) and checks k2mp's signatures and call sites against it.
 add_executable(sigtest test/sigtest.cpp)
 target_compile_definitions(sigtest PRIVATE ${COMMON_DEFS})
+
+# The hook layer and the save-copy stubs, exercised with stand-ins for the game's functions.
+add_executable(hooktest test/hooktest.cpp ${K2MP_CORE})
+target_include_directories(hooktest PRIVATE include)
+target_compile_definitions(hooktest PRIVATE ${COMMON_DEFS} K2MP_VERSION="${K2MP_VERSION}")
+target_compile_options(hooktest PRIVATE ${COMMON_OPTS})
+target_link_options(hooktest PRIVATE /SAFESEH:NO /INCREMENTAL:NO)

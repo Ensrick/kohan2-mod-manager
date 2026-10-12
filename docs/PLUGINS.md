@@ -47,45 +47,28 @@ See [`native/include/k2plugin.h`](../native/include/k2plugin.h). A plugin:
   Comments = one or two sentences for players, ProductVersion, InternalName = its id. The manager
   lists any DLL in `Mods\` with that ProductName.
 
-## Building
+## Building and testing
 
 `native\build.ps1` (Visual Studio 2022 or its Build Tools, C++ workload) builds `winmm.dll`,
-`k2mp.dll` and two tests into `native\build\Release`; the root `build.ps1` runs it first, and the
-manager embeds both DLLs. Tests:
+`k2mp.dll` and the tests into `native\build\Release`; the root `build.ps1` runs it first, and the
+manager embeds both DLLs. `native\test\run_all.ps1 [-DecryptedExe <path>]` runs every test:
 
-- `native\test\loader_test.ps1` runs a stand-in `k2.exe` next to the loader in a scratch folder and
-  checks `plugins.log`: the plugin loads, refuses the stand-in exe, unsafe and missing names are
-  reported.
-- `native\build\Release\sigtest.exe <k2mp.dll> <decrypted k2.exe>` maps a decrypted copy of the
-  exe as an image (never runs it) at a relocated address and checks every signature.
+- `hooktest.exe`: the hook layer, and each save-copy stub reached through a real redirected `call`
+  the way the game makes it (same registers, same stack arguments). Checks that the original function
+  still gets its ECX and arguments, the plugin sees the session, and ESP, EBX, ESI, EDI and EBP come
+  back unchanged.
+- `loader_test.ps1`: a stand-in `k2.exe` next to the loader in a scratch folder; checks
+  `plugins.log`: the plugin loads, refuses the stand-in exe, unsafe and missing names are reported.
+- `sigtest.exe <k2mp.dll> <decrypted k2.exe>` (with `-DecryptedExe`): maps a decrypted copy of the
+  exe as an image (never runs it) at a relocated address and checks every signature and call site.
 
 ## Multiplayer Fixes (`k2mp.dll`)
 
-Goal: a player who drops out of a multiplayer match can rejoin it, the match pauses until they
-are back, and nobody shares saves by hand. Version 0.1.0-dev.1 only checks that it recognises
-`k2.exe` 1.3.68 at the places it will patch:
+Design, evidence and status: [MULTIPLAYER.md](MULTIPLAYER.md). Source in `native\k2mp`: every
+address it uses is in `game.h` with the bytes it must find there; `hook.*` checks and redirects
+calls; each feature has its own file and its own switch in `Mods\k2mp.ini`:
 
-| RVA | Function | Why |
-|---|---|---|
-| `0x1624d5` | `KKC_Session::GameSave` | the host writes a save, other players pause until it is done |
-| `0x1506dd` | `TGC_AdminConn::SerializeConnect` | the host refuses a joining player with "Game is already in progress" (reason 10) when the session state is 2 or 4 |
-
-What the game already has (static analysis of 1.3.68, and match logs):
-
-- **Games in progress in the browser:** the `NetworkReportGameInProgress` setting (on by default)
-  and an "In Progress" filter. Joining one is refused by the check above.
-- **A player drops:** the host hands that kingdom to a computer player
-  (`KKC_Session::MidgameCreateImplicitAIs`); `KKC_MidgameCreateAIsAndSessionPlayersOrder` exists.
-- **The host drops:** everyone freezes ("backup mode"), then another player becomes host after a
-  timeout of about 14 s ("%s has taken over as host").
-- **Saves:** a save takes about 1 s, loading one in the lobby about 3 s. The game sends a save to a
-  player who lacks it, in 64-byte blocks, 20 per frame (`NetworkFileTransferBlockSize`,
-  `NetworkFileTransferBlocksPerFrame`, `NetworkFileTransferMaxPendingBlocks` = 256): slow for a
-  900 KB save.
-- **Replays:** every match is recorded as a film of orders (`KKC_Session::OpenFilmForRecording`)
-  and films can be played back faster than real time.
-
-Plan: when a player drops, the host's game pauses, saves and keeps the match open; the dropped
-player rejoins from the browser, gets the save at full speed, and every player reloads it (about
-3 s) with the returning player back in their slot. Catching up without the reload comes later, if
-the reload proves too disruptive. Only the host should need the plugin; not yet verified.
+```ini
+[features]
+save_copies = 1
+```

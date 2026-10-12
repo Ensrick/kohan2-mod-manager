@@ -19,7 +19,7 @@ $log
 $checks = [ordered]@{
     'loader banner'          = 'loader: Kohan II plugin loader '
     'k2mp loaded'            = 'k2mp: Multiplayer Fixes '
-    'k2mp refuses a non-game' = 'staying off'
+    'k2mp refuses a non-game' = 'save copies: not available for this k2.exe'
     'k2mp reported'          = 'k2mp.dll stayed off'
     'unsafe name skipped'    = 'skipped "..\\evil.dll"'
     'missing dll reported'   = 'could not load missing.dll'
