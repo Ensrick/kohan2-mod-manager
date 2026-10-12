@@ -2,6 +2,18 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.1.0-beta.2] - unreleased
+
+### Added
+- Multiplayer autosave (#3): a tick box in the manager and `k2mod autosave on|off
+  [--minutes N]`. While it is on, `<game>\user.txt` (run by the game after start-up) starts
+  `Mods\mp_autosave.txt`, a loop in the game's own script language: wait for a match, wait
+  N minutes (default 5), `GameSave` into "MP Autosave A", the same into "B", repeat. Only
+  the host's save goes through, so every player can leave it on. No change to `k2.exe` or
+  game data, nothing in the multiplayer checksums. Anything else in `user.txt` is kept, in
+  its own encoding. Not yet tried in a real match; see `docs/MP_AUTOSAVE.md` for the test
+  plan.
+
 ## [0.1.0-beta.1] - 2026-10-11
 
 First public build.

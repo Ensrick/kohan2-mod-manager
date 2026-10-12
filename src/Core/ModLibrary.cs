@@ -306,7 +306,7 @@ namespace K2Mods
             WriteText(ScriptPath, string.Join("\r\n", lines) + "\r\n", Encoding.ASCII);
         }
 
-        static void WriteText(string path, string text, Encoding enc = null)
+        internal static void WriteText(string path, string text, Encoding enc = null)
         {
             var tmp = path + ".tmp";
             File.WriteAllText(tmp, text, enc ?? new UTF8Encoding(false));

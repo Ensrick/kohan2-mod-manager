@@ -283,6 +283,35 @@ namespace K2ModManager
             RemoveButton.IsEnabled = row != null;
             AddButton.IsEnabled = game != null;
             PlayButton.IsEnabled = game != null;
+            AutosaveBox.IsEnabled = game != null;
+            int? minutes = null;
+            try { if (game != null) minutes = MpAutosave.Minutes(game); }
+            catch (Exception ex) when (Explain(ex) != null) { }
+            AutosaveBox.IsChecked = minutes != null;
+            AutosaveText.Text = minutes == null ? "Autosave multiplayer games" : $"Autosave multiplayer games every {minutes} min";
+        }
+
+        void OnAutosave(object sender, RoutedEventArgs e)
+        {
+            bool on = AutosaveBox.IsChecked == true;
+            if (game == null) return;
+            try
+            {
+                if (on) MpAutosave.Enable(game, MpAutosave.DefaultMinutes);
+                else MpAutosave.Disable(game);
+                Say(new[]
+                {
+                    on ? $"Multiplayer autosave is on. When you host, the match is saved every {MpAutosave.DefaultMinutes} minutes as \"MP Autosave A\" and \"MP Autosave B\". " +
+                         "If a game crashes, host again, choose Load saved game and pick the newer of the two."
+                       : "Multiplayer autosave is off.",
+                    GameInstall.IsGameRunning() ? "Kohan II is running: this takes effect the next time you start it." : null,
+                });
+            }
+            catch (Exception ex) when (Explain(ex) != null)
+            {
+                Say(new[] { Explain(ex) }, Kind.Error);
+            }
+            Refresh();
         }
 
         void ShowDetails()

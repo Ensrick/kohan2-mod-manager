@@ -22,6 +22,10 @@
       <Border DockPanel.Dock="Bottom" Background="{DynamicResource Footer}" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="20,12">
         <DockPanel>
           <Button x:Name="PlayButton" DockPanel.Dock="Right" Style="{StaticResource Primary}" Content="Play Kohan II" Click="OnPlay" Margin="0" />
+          <CheckBox x:Name="AutosaveBox" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="0,0,20,0" Click="OnAutosave"
+                    ToolTip="When you host, the match is saved every few minutes as &quot;MP Autosave A&quot; and &quot;B&quot;. If someone's game crashes, host again and pick the newest one under Load saved game. Starts the next time you open Kohan II.">
+            <TextBlock x:Name="AutosaveText" Text="Autosave multiplayer games" />
+          </CheckBox>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <Button x:Name="AddButton" Content="Add a mod..." Click="OnAdd" FontWeight="SemiBold" />
             <TextBlock Text="or drag a mod file onto this window" VerticalAlignment="Center" Foreground="{DynamicResource Muted}" />

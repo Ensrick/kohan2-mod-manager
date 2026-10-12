@@ -38,10 +38,17 @@ no installation or administrator rights.
   the game's data.
 - **Multiplayer:** every player needs the same mods ticked, in the same order. The game
   checks this when you connect and refuses mismatched players.
-- **What it changes:** only `<game>\Mods\` and `<game>\startup\autoexec_mods.txt`. Old
-  startup scripts it offers to turn off are moved to `startup\disabled\`, never deleted.
-  Loose files in `Documents\Kohan2\data` override every mod; the manager warns when it
-  finds game files there.
+- **Multiplayer autosave (new, not yet tried in a real match):** tick **Autosave multiplayer
+  games**. When you host, the match is saved every 5 minutes as "MP Autosave A" and
+  "MP Autosave B", taking turns. If a game crashes, host again, choose **Load saved game**
+  and pick the newer one. It uses only the game's own script commands, so it changes no
+  game data and does not affect the multiplayer version check. Details:
+  [docs/MP_AUTOSAVE.md](docs/MP_AUTOSAVE.md).
+- **What it changes:** only `<game>\Mods\` and `<game>\startup\autoexec_mods.txt`, plus
+  `<game>\user.txt` while multiplayer autosave is on. Old startup scripts it offers to turn
+  off are moved to `startup\disabled\`, never deleted. Loose files in
+  `Documents\Kohan2\data` override every mod; the manager warns when it finds game files
+  there.
 
 ## For mod authors
 
