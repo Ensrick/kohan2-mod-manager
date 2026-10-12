@@ -16,3 +16,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   the same patches as kohan2-battleborn's `tools/bbpatch.py` (all 127 Battleborn patches
   identical) and builds Battleborn byte-identical to its Python build.
 - One managed startup script, `startup\autoexec_mods.txt`, with an `addmod` line per mod.
+- `k2mod test` (2026-10-11): unattended start-up test. Starts k2.exe minimized with the
+  Steam app id in its environment (nothing written to the game folder), reads the live log:
+  any `ERROR:` line (clean starts log none) is a failure, "(init time) command line
+  scripts" plus 10 quiet seconds is the main menu (the engine buffers "connect
+  MainMenuInterface" until exit). A private desktop was tried first and does not work: the
+  renderer finds no adapter there ("No adapters available").

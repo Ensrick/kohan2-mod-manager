@@ -21,6 +21,9 @@ namespace K2ModCli
   k2mod install <package|.rwd|.zip|folder>      Install and turn on.
   k2mod list | enable <id> | disable <id> | remove <id> | up <id> | down <id>
   k2mod refresh                                 Rebuild mods after a game update changed Data.rwd.
+  k2mod test [--timeout S] [--visible]          Start the game with the current mods (minimized,
+        without taking focus), wait for the main menu or an error, close it, report the
+        errors and warnings from its log. Exit code 0 = main menu reached. Needs Steam.
 
 Options: --game ""<Kohan II folder>"" (default: found through Steam)
          --data ""<Data.rwd>""        (rwd/check/pack without a game folder)";
@@ -62,6 +65,8 @@ Options: --game ""<Kohan II folder>"" (default: found through Steam)
             var versionOpt = Opt(a, "--version");
             var authorOpt = Opt(a, "--author");
             var idOpt = Opt(a, "--id");
+            var timeoutOpt = Opt(a, "--timeout");
+            bool visible = a.Remove("--visible");
             if (a.Count == 0 || a[0] == "-h" || a[0] == "--help" || a[0] == "/?")
             {
                 Console.WriteLine(Usage);
@@ -170,6 +175,16 @@ Options: --game ""<Kohan II folder>"" (default: found through Steam)
                         foreach (var m in msgs) Console.WriteLine("  " + m);
                         Console.WriteLine(msgs.Count == 0 ? "every mod is up to date" : "ok");
                         return 0;
+                    }
+                    case "test":
+                    {
+                        var g = Game();
+                        int timeout = timeoutOpt != null ? int.Parse(timeoutOpt) : 300;
+                        var r = LaunchTest.Run(g, timeout, visible, s => Console.WriteLine(s));
+                        Console.WriteLine($"result: {r.Outcome} after {r.Seconds:0} s; log {r.LogPath ?? "(none)"}");
+                        foreach (var e in r.Errors) Console.WriteLine("  ERROR: " + e);
+                        foreach (var w in r.Warnings) Console.WriteLine("  warning: " + w);
+                        return r.Ok ? 0 : 1;
                     }
                     case "enable":
                     case "disable":

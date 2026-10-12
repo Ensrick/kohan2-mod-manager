@@ -77,6 +77,11 @@ The full format is in [docs/FORMAT.md](docs/FORMAT.md).
 `k2mod.exe` does everything from a command line (`pack`, `check`, `rwd`, `install`, `list`,
 `enable`, `disable`, `up`, `down`, `remove`, `refresh`); run `k2mod --help`.
 
+`k2mod test` starts the game with the installed mods (minimized, without taking focus),
+waits for the main menu or an error, closes it and prints the errors and warnings from
+its log; exit code 0 means the main menu was reached. A fatal data error is reported in
+about 25 seconds, a clean start in about 30. Steam must be running.
+
 ## How the game loads mods
 
 Reverse-engineered from `k2.exe` (Steam build) while making
