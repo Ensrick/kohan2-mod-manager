@@ -2,7 +2,9 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.1.0-beta.1] - 2026-10-11
+
+First public build.
 
 ### Added
 - `K2ModManager.exe` (players): finds Kohan II through Steam; installs `.k2mod` packages,
@@ -22,6 +24,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   is closed. A `.k2mod` or `.rwd` dropped into `Mods\` by hand shows up in the list, off,
   under any file name: it is renamed to its id, a package is built on the next start, and an
   archive takes its name and version from its file name (`Immortals_V2.1.rwd` -> Immortals 2.1).
+- `.rwd` archives for players (2026-10-11): an `.rwd` next to the manager is offered for
+  install like a `.k2mod`; a raw archive takes its name and version from its file name
+  everywhere; a copy installed by hand with its own `startup\autoexec_<name>.txt` is taken
+  over (that script moves to `startup\disabled\` and the mod is ticked, so the game loads the
+  same thing); the game's own `Data.rwd` / `Music.rwd` are refused as mods.
 - `k2mod rwd` (2026-10-11) also takes a zip or folder of loose finished files, like
   `install` does. Immortals V2.1's zip packs to 211 files identical to the zip's (its two
   Word documents left out).
@@ -44,3 +51,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   scripts" plus 10 quiet seconds is the main menu (the engine buffers "connect
   MainMenuInterface" until exit). A private desktop was tried first and does not work: the
   renderer finds no adapter there ("No adapters available").
+
+[0.1.0-beta.1]: https://github.com/Ensrick/kohan2-mod-manager/releases/tag/v0.1.0-beta.1

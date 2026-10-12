@@ -435,19 +435,48 @@ namespace K2ModManager
             string dir;
             try { dir = Path.GetDirectoryName(Settings.ExePath); }
             catch (Exception) { return; }
-            foreach (var f in Directory.GetFiles(dir, "*.k2mod").OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+            // .rwd archives too, unless the manager sits in the game folder next to the game's own Data.rwd and Music.rwd
+            bool inGameFolder = game != null && string.Equals(Path.GetFullPath(dir).TrimEnd('\\'), Path.GetFullPath(game.Folder).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+            var found = Directory.GetFiles(dir)
+                .Where(f => f.EndsWith(".k2mod", StringComparison.OrdinalIgnoreCase) || !inGameFolder && f.EndsWith(".rwd", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase);
+            foreach (var f in found)
             {
                 ModManifest man;
-                try { man = ModPackage.ReadManifest(f); }
-                catch (Exception ex) when (Explain(ex) != null) { continue; }
+                bool archive = f.EndsWith(".rwd", StringComparison.OrdinalIgnoreCase);
+                if (archive)
+                {
+                    var (name, version) = ModLibrary.NameAndVersion(Path.GetFileNameWithoutExtension(f));
+                    man = new ModManifest { Name = name, Version = version, Id = ModManifest.MakeId(name) };
+                }
+                else
+                {
+                    try { man = ModPackage.ReadManifest(f); }
+                    catch (Exception ex) when (Explain(ex) != null) { continue; }
+                }
                 var have = lib?.Find(man.Id);
-                if (have != null && have.Manifest.Version == man.Version) continue;
+                if (have != null && (archive ? SameFile(f, have.RwdPath) : have.Manifest.Version == man.Version)) continue;
+                var title = man.Title + (man.Version.Length > 0 ? " " + man.Version : "");
                 var q = have == null
-                    ? $"{man.Title} {man.Version} is in the same folder as the manager.\n\nInstall it now?"
-                    : $"{man.Title} {man.Version} is in the same folder as the manager (you have version {have.Manifest.Version}).\n\nUpdate it now?";
+                    ? $"{title} is in the same folder as the manager.\n\nInstall it now?"
+                    : $"{title} is in the same folder as the manager and differs from the copy you have" +
+                      $"{(have.Manifest.Version.Length > 0 ? " (version " + have.Manifest.Version + ")" : "")}.\n\nUpdate it now?";
                 if (MessageBox.Show(this, q, "Kohan II Mod Manager", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
                     await InstallFrom(f);
             }
+        }
+
+        static bool SameFile(string a, string b)
+        {
+            try
+            {
+                if (!File.Exists(b) || new FileInfo(a).Length != new FileInfo(b).Length) return false;
+                using (var sha = System.Security.Cryptography.SHA256.Create())
+                using (var fa = File.OpenRead(a))
+                using (var fb = File.OpenRead(b))
+                    return sha.ComputeHash(fa).SequenceEqual(sha.ComputeHash(fb));
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { return false; }
         }
 
         void OnPlay(object sender, RoutedEventArgs e)

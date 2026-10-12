@@ -127,7 +127,8 @@ namespace K2Mods
                     lib.Mods.Add(m);
                 }
             }
-            // mods missing from mods.json (lost, or copied in by hand): older per-mod folders, then packages, then archives; they start off
+            // mods missing from mods.json (lost, or copied in by hand): older per-mod folders, then packages, then archives;
+            // they start off unless a startup script of their own was already loading them
             bool adopted = false;
             if (Directory.Exists(game.ModsDir))
             {
@@ -172,6 +173,10 @@ namespace K2Mods
                 }
                 man.Validate();
                 if (Find(man.Id) != null) return null;
+                // installed by hand with its own startup script: the manager takes that script over (turns it off and
+                // ticks the mod, so the game loads the same thing). A script that also loads other files is left alone.
+                var scripts = ExternalScripts().Where(s => !s.Disabled && s.Mounts.Any(p => IsMountOf(p, path))).ToList();
+                if (scripts.Count > 0 && (GameInstall.IsGameRunning() || scripts.Any(s => s.Mounts.Count > 1))) return null;
                 var target = Path.Combine(Game.ModsDir, man.Id + ext);
                 if (!string.Equals(Path.GetFileName(path), Path.GetFileName(target), StringComparison.Ordinal))
                 {
@@ -189,11 +194,28 @@ namespace K2Mods
                 }
                 if (ext == ".rwd") using (new RwdArchive(target)) { }   // a real archive, not a damaged download
                 var m = new InstalledMod { Manifest = man, Folder = Game.ModsDir };
-                return m.IsInstalled || m.HasPackage ? m : null;
+                if (!m.IsInstalled && !m.HasPackage) return null;
+                foreach (var s in scripts) SetExternal(s, false);
+                m.Enabled = scripts.Count > 0;
+                return m;
             }
             catch (Exception ex) when (ex is FormatException || ex is IOException || ex is ModException || ex is InvalidDataException || ex is UnauthorizedAccessException)
             {
                 return null;
+            }
+        }
+
+        /// <summary>Whether a startup script's addmod/adddepot path (relative to the game folder) is this file.</summary>
+        bool IsMountOf(string mount, string file)
+        {
+            try
+            {
+                var full = Path.GetFullPath(Path.Combine(Game.Folder, mount.Trim('"').Replace('/', '\\')));
+                return string.Equals(full, Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException || ex is PathTooLongException)
+            {
+                return false;
             }
         }
 
@@ -315,6 +337,8 @@ namespace K2Mods
             progress?.Invoke("Reading " + Path.GetFileName(source));
             if (ext == ".rwd")
             {
+                if (string.Equals(Path.GetDirectoryName(Path.GetFullPath(source)), Path.GetFullPath(Game.Folder).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                    throw new ModException($"{Path.GetFileName(source)} is one of Kohan II's own archives, not a mod");
                 using (new RwdArchive(source)) { }
                 rwdSource = source;
             }
@@ -323,10 +347,12 @@ namespace K2Mods
             else
                 pkg = LoosePackage(source, openGame(), r.Messages);
 
+            var (rwdName, rwdVersion) = NameAndVersion(Path.GetFileNameWithoutExtension(source));   // "Immortals_V2.1.rwd" is Immortals 2.1
             var man = pkg?.Manifest ?? new ModManifest
             {
-                Name = Path.GetFileNameWithoutExtension(source),
-                Id = ModManifest.MakeId(Path.GetFileNameWithoutExtension(source)),
+                Name = rwdName,
+                Version = rwdVersion,
+                Id = ModManifest.MakeId(rwdName),
             };
             man.Validate();
             var existing = Find(man.Id);

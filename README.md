@@ -4,14 +4,26 @@ One small program for **Kohan II: Kings of War** (Steam): players install and sw
 a few clicks, and mod authors turn their work into a package that contains none of the
 game's own files.
 
+## Download
+
+**[K2ModManager.exe](https://github.com/Ensrick/kohan2-mod-manager/releases/latest/download/K2ModManager.exe)**
+(players), or the [latest release](https://github.com/Ensrick/kohan2-mod-manager/releases/latest)
+for the zip with `k2mod.exe` (mod authors). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
 ## For players
 
-1. Download `K2ModManager.exe` and the mod you want (a `.k2mod` file). Put them in a folder.
+1. Download `K2ModManager.exe` and the mod you want (a `.k2mod` or `.rwd` file). Put them in
+   a folder.
 2. Double-click `K2ModManager.exe`. It finds Kohan II through Steam and offers to install any
    mod sitting next to it.
 3. To add more mods later, click **Add a mod...** or drag the file onto the window. After
-   the first run, double-clicking a `.k2mod` file opens it in the manager.
+   the first run, double-clicking a `.k2mod` file opens it in the manager. A `.rwd` or
+   `.k2mod` copied straight into the game's `Mods` folder also shows up in the list.
 4. Tick the mods you want and click **Play Kohan II**.
+
+A mod installed by hand (an `.rwd` in `Mods` plus its own `startup\autoexec_<name>.txt`) is
+taken over the first time the manager opens: its startup file is moved to `startup\disabled\`
+and the mod is ticked in the list instead, so nothing changes in the game.
 
 Windows may show "Windows protected your PC" for a new download: click **More info**, then
 **Run anyway**. It needs Windows 10 or 11 (the .NET Framework 4.8 it uses is built in) and
@@ -38,7 +50,9 @@ no installation or administrator rights.
 2. In the manager, click **For mod authors: make a package...**, pick the folder, fill in
    name and version, and click **Make package**. Or from a command line:
    `k2mod pack <folder> --name "My Mod" --version 1.0`.
-3. Share the `.k2mod` file.
+3. Share the `.k2mod` file. (**Make .rwd only**, or `k2mod rwd <folder or zip> -o MyMod.rwd`,
+   builds the plain archive the game loads; it holds your finished files whole, game text
+   included, so prefer the `.k2mod` for sharing.)
 
 The package holds only your changes:
 
