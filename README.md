@@ -34,6 +34,12 @@ no installation or administrator rights.
   together are never ticked together: turning one on turns the other off.
 - **Older mods** made before packages existed also work: a `.zip` of loose game files (it
   finds the data folder inside and leaves readmes out) or a ready-made `.rwd` archive.
+- **Mods installed by hand** (files copied into `Documents\Kohan2\data`, the usual way for
+  mods such as Immortals) override every mod in the list; the manager says so and offers
+  **Pack it as a mod...**. That puts those files into one `.rwd` mod in the list, ticked, and
+  moves the loose files (never deletes them) to `Documents\Kohan2\loose_backup_<date>\`.
+  Online, you then match players who use the same packed mod, no longer players who
+  installed it by hand. Command line: `k2mod loose`, `k2mod loose pack`.
 - **Game updates:** mods built from patches are rebuilt automatically when Steam updates
   the game's data.
 - **Multiplayer:** every player needs the same mods ticked, in the same order. The game
@@ -48,7 +54,7 @@ no installation or administrator rights.
   `<game>\user.txt` while multiplayer autosave is on. Old startup scripts it offers to turn
   off are moved to `startup\disabled\`, never deleted. Loose files in
   `Documents\Kohan2\data` override every mod; the manager warns when it finds game files
-  there.
+  there and moves them to a `loose_backup_<date>` folder only when you pack them into a mod.
 
 ## For mod authors
 
@@ -96,7 +102,7 @@ when yours is turned on; `loadAfter` puts yours later in the list so your files 
 The full format is in [docs/FORMAT.md](docs/FORMAT.md).
 
 `k2mod.exe` does everything from a command line (`pack`, `check`, `rwd`, `install`, `list`,
-`enable`, `disable`, `up`, `down`, `remove`, `refresh`); run `k2mod --help`.
+`enable`, `disable`, `up`, `down`, `remove`, `refresh`, `loose`); run `k2mod --help`.
 
 `k2mod test` starts the game with the installed mods (minimized, without taking focus),
 waits for the main menu or an error, closes it and prints the errors and warnings from
