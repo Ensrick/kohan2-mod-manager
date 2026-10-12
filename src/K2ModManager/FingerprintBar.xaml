@@ -1,0 +1,14 @@
+<UserControl x:Class="K2ModManager.FingerprintBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- The game files code in the main window's header (navy in both themes, so fixed colours like the game folder line) -->
+  <StackPanel Orientation="Horizontal">
+    <TextBlock x:Name="CodeLine" Foreground="#B8C4DE" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+               ToolTip="Players whose codes match load exactly the same game data. If a multiplayer match goes out of sync right away, compare codes first.">
+      <Run Text="Game files: " /><Run x:Name="CodeText" FontFamily="Consolas" FontWeight="SemiBold" Foreground="#EEF2FA" />
+    </TextBlock>
+    <Button x:Name="CopyButton" Style="{StaticResource Link}" Content="Copy" Click="OnCopy" Margin="14,0,0,0" VerticalAlignment="Center"
+            ToolTip="Copy the code, to paste it in your group's chat" />
+    <Button x:Name="DetailsButton" Style="{StaticResource Link}" Content="Details..." Click="OnDetails" Margin="12,0,0,0" VerticalAlignment="Center" />
+  </StackPanel>
+</UserControl>

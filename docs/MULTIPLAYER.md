@@ -69,7 +69,7 @@ needs the sync log of a second player from the same match.
 
 | # | Change | Status |
 |---|---|---|
-| 1 | **Game files code** in the manager: one short code per install from the data the game actually loads (archives, mods and loose files), and a report two players can compare. Catches the data mismatches the join check misses. | in progress |
+| 1 | **Game files code** in the manager: one short code per install from the data the game actually loads (archives, mods and loose files), and a report two players can compare. Catches the data mismatches the join check misses. Definition: [FINGERPRINT.md](FINGERPRINT.md). | built, manager 0.1.0-beta.6 |
 | 2 | **Save copies** (`save_copies`): every non-host PC writes `<save> (copy).RSG` when the host saves, with the engine's own save task while the game is paused for the host's save. Host and players log the SHA-256 of their files. | built, k2mp 0.2.0-dev.1; needs a two-player test |
 | 3 | **Use the copy when reloading**: when the host loads `X`, a player whose `X (copy)` has the host's checksum uses it instead of downloading; a different `X` is moved aside and downloaded instead of refused. | planned, after 2 is tested |
 | 4 | **Fast save delivery** between players who both have the plugin, on a private Steam channel; players without it keep the game's own transfer. | planned |

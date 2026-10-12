@@ -12,6 +12,7 @@ using K2Mods;
 // Renders the manager's windows to PNG files without showing any window (layout check).
 // UiPreview <game folder> <out dir> [author mod folder] [--dark] [--notices]
 // With K2MODS_USERDATA set to a test folder holding loose mod files, also renders the pack dialog (loose.png).
+// Also renders the game files window (fingerprint.png) and a comparison with a made-up other player (fingerprint-compare.png).
 static class Program
 {
     [STAThread]
@@ -37,8 +38,16 @@ static class Program
             foreach (var k in new[] { "Info", "Warn", "Error" })
                 add.Invoke(w, new object[] { $"Sample {k.ToLower()} notice.", Enum.Parse(kind, k), k == "Warn" ? "Open that folder" : null, null });
         }
+        // the game files code: worked out here, not in the background, so the render shows it
+        var fp = GameFingerprint.Compute(new GameInstall(game));
+        ((FingerprintBar)typeof(MainWindow).GetField("FilesBar", flags).GetValue(w)).Display(fp);
+        var fw = new FingerprintWindow(new GameInstall(game), fp);
+        var fc = new FingerprintWindow(new GameInstall(game), fp);
+        fc.ShowComparison(new FingerprintComparison(fp, SampleOtherPlayer(fp)));
         Theme.Apply(dark);
         Save((FrameworkElement)Detach(w), 960, 640, Path.Combine(outDir, "main.png"));
+        Save((FrameworkElement)Detach(fw), 720, 600, Path.Combine(outDir, "fingerprint.png"));
+        Save((FrameworkElement)Detach(fc), 720, 600, Path.Combine(outDir, "fingerprint-compare.png"));
         var a = new AuthorWindow(new GameInstall(game), w);
         if (args.Length > 2) typeof(AuthorWindow).GetMethod("LoadFolder", flags).Invoke(a, new object[] { args[2] });
         Save((FrameworkElement)Detach(a), 860, 760, Path.Combine(outDir, "author.png"));
@@ -49,6 +58,17 @@ static class Program
             Save((FrameworkElement)Detach(lw), 720, 640, Path.Combine(outDir, "loose.png"));
         }
         return 0;
+    }
+
+    /// <summary>Another player's report for the comparison render: one file changed, one missing, one extra.</summary>
+    static GameFingerprint SampleOtherPlayer(GameFingerprint mine)
+    {
+        var theirs = GameFingerprint.ParseReport(mine.ToReport("UiPreview"));
+        theirs.Code = "1B2C-3D4E";
+        if (theirs.Files.Count > 0) theirs.Files[0].ShortHash = "0123456789ab";
+        if (theirs.Files.Count > 1) theirs.Files.RemoveAt(1);
+        theirs.Files.Add(new FingerprintFile { Path = "Units/Example/example_unit.tgi", ShortHash = "abcdef012345", Source = @"loose: Documents\Kohan2\data" });
+        return theirs;
     }
 
     static object Detach(Window w)
