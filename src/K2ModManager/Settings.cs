@@ -52,6 +52,8 @@ namespace K2ModManager
         [DllImport("shell32.dll")]
         static extern void SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);
 
+        const string IconVersion = "1";
+
         /// <summary>Double-clicking a .k2mod file opens it in this program (current user only, no admin needed).</summary>
         public static void RegisterFileType()
         {
@@ -60,12 +62,14 @@ namespace K2ModManager
             {
                 var command = $"\"{ExePath}\" \"%1\"";
                 using (var k = Registry.CurrentUser.CreateSubKey(@"Software\Classes\K2ModManager.Package\shell\open\command"))
+                using (var cls = Registry.CurrentUser.CreateSubKey(@"Software\Classes\K2ModManager.Package"))
                 {
-                    if (k.GetValue("") as string == command) return;
+                    // IconVersion: bumped when the icon changes, so Explorer is told to redraw .k2mod files once
+                    if (k.GetValue("") as string == command && cls.GetValue("IconVersion") as string == IconVersion) return;
                     k.SetValue("", command);
+                    cls.SetValue("", "Kohan II mod");
+                    cls.SetValue("IconVersion", IconVersion);
                 }
-                using (var k = Registry.CurrentUser.CreateSubKey(@"Software\Classes\K2ModManager.Package"))
-                    k.SetValue("", "Kohan II mod");
                 using (var k = Registry.CurrentUser.CreateSubKey(@"Software\Classes\K2ModManager.Package\DefaultIcon"))
                     k.SetValue("", $"\"{ExePath}\",0");
                 using (var k = Registry.CurrentUser.CreateSubKey(@"Software\Classes\.k2mod"))

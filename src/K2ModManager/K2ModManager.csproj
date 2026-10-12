@@ -7,6 +7,7 @@
     <AssemblyName>K2ModManager</AssemblyName>
     <RootNamespace>K2ModManager</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>K2ModManager.ico</ApplicationIcon>
     <Version>0.1.0</Version>
     <Product>Kohan II Mod Manager</Product>
     <AssemblyTitle>Kohan II Mod Manager</AssemblyTitle>
@@ -19,5 +20,6 @@
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="System.Windows.Forms" />
+    <Resource Include="K2ModManager.ico" />
   </ItemGroup>
 </Project>

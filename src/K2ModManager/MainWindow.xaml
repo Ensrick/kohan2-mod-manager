@@ -1,7 +1,7 @@
 <Window x:Class="K2ModManager.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Kohan II Mod Manager" Width="960" Height="640" MinWidth="760" MinHeight="480"
+        Title="Kohan II Mod Manager" Icon="K2ModManager.ico" Width="960" Height="640" MinWidth="760" MinHeight="480"
         WindowStartupLocation="CenterScreen" FontSize="14" Foreground="{StaticResource Ink}"
         Background="{StaticResource Paper}" AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop">
   <Grid>
