@@ -27,6 +27,8 @@ namespace K2Mods
 
         public string Title => string.IsNullOrWhiteSpace(Name) ? Id : Name;
 
+        public static bool IsValidId(string id) => IdRe.IsMatch(id ?? "");
+
         public static string MakeId(string name)
         {
             var s = Regex.Replace((name ?? "").ToLowerInvariant(), "[^a-z0-9]+", "-").Trim('-');

@@ -11,7 +11,9 @@ namespace K2Mods
     {
         public ModManifest Manifest;
         public bool Enabled;
+        /// <summary>Mods\, or Mods\&lt;id&gt;\ for a mod still in the folder of a manager build before 2026-10-11.</summary>
         public string Folder;
+        public bool InOwnFolder;
         public string BuiltAgainst;
         public string Problem;
         List<string> files;
@@ -23,7 +25,7 @@ namespace K2Mods
         public bool IsInstalled => File.Exists(RwdPath);
 
         /// <summary>Path the startup script mounts, relative to the game folder.</summary>
-        public string MountPath => "Mods/" + Id + "/" + Id + ".rwd";
+        public string MountPath => InOwnFolder ? "Mods/" + Id + "/" + Id + ".rwd" : "Mods/" + Id + ".rwd";
 
         public List<string> FileNames
         {
@@ -63,10 +65,11 @@ namespace K2Mods
 
     /// <summary>
     /// The installed mods of one game folder:
-    ///   &lt;game&gt;\Mods\&lt;id&gt;\&lt;id&gt;.rwd     the built archive the game mounts
-    ///   &lt;game&gt;\Mods\&lt;id&gt;\&lt;id&gt;.k2mod   the package it was built from (rebuilt after game updates)
-    ///   &lt;game&gt;\Mods\&lt;id&gt;\mod.json
-    ///   &lt;game&gt;\Mods\mods.json            load order and on/off state
+    ///   &lt;game&gt;\Mods\&lt;id&gt;.rwd            the built archive the game mounts
+    ///   &lt;game&gt;\Mods\&lt;id&gt;.k2mod          the package it was built from (rebuilt after game updates)
+    ///   &lt;game&gt;\Mods\mods.json            load order, on/off state and each mod's mod.json
+    /// Manager builds before 2026-10-11 kept each mod in Mods\&lt;id&gt;\ with its own mod.json;
+    /// Load moves those up into Mods\ while the game is not running.
     ///   &lt;game&gt;\startup\autoexec_mods.txt  one 'addmod' line per enabled mod, in load order
     /// k2.exe runs every startup\autoexec*.txt after autoexec.txt has mounted Data.rwd. Mods are
     /// added at priority 0, where a later archive overrides an earlier one, so the last mod in
@@ -117,43 +120,93 @@ namespace K2Mods
                 var state = Json.ParseObject(File.ReadAllText(lib.StatePath, Encoding.UTF8));
                 foreach (var row in Json.ObjList(state, "mods"))
                 {
-                    var id = Json.Str(row, "id", "");
-                    var m = lib.Open(id);
-                    if (m == null || !known.Add(id)) continue;
+                    var m = lib.Open(Json.Str(row, "id", ""), row);
+                    if (m == null || !known.Add(m.Id)) continue;
                     m.Enabled = Json.Bool(row, "enabled");
                     m.BuiltAgainst = Json.Str(row, "builtAgainst");
                     lib.Mods.Add(m);
                 }
             }
+            // mods missing from mods.json (lost, or copied in by hand): packages, archives, and older per-mod folders; they start off
             if (Directory.Exists(game.ModsDir))
-                foreach (var dir in Directory.GetDirectories(game.ModsDir).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+            {
+                var ids = Directory.GetDirectories(game.ModsDir).Select(Path.GetFileName)
+                    .Concat(Directory.GetFiles(game.ModsDir)
+                        .Where(f => f.EndsWith(".rwd", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".k2mod", StringComparison.OrdinalIgnoreCase))
+                        .Select(Path.GetFileNameWithoutExtension))
+                    .Select(id => id.ToLowerInvariant())
+                    .Distinct()
+                    .OrderBy(id => id, StringComparer.Ordinal);
+                foreach (var id in ids)
                 {
-                    var id = Path.GetFileName(dir);
                     if (known.Contains(id)) continue;
-                    var m = lib.Open(id);
+                    var m = lib.Open(id, null);
                     if (m == null) continue;
                     known.Add(id);
                     lib.Mods.Add(m);
                 }
+            }
+            lib.MoveOutOfFolders();
             return lib;
         }
 
-        InstalledMod Open(string id)
+        /// <summary>The mod with this id: its mod.json comes from its mods.json row, its package, or (an archive alone) its file name.</summary>
+        InstalledMod Open(string id, Dictionary<string, object> row)
         {
-            var folder = Path.Combine(Game.ModsDir, id);
-            var mf = Path.Combine(folder, "mod.json");
-            if (id.Length == 0 || id.StartsWith("_") || !File.Exists(mf)) return null;
+            if (!ModManifest.IsValidId(id)) return null;
             try
             {
-                var man = ModManifest.Read(mf);
-                if (!string.Equals(man.Id, id, StringComparison.OrdinalIgnoreCase)) return null;
-                var m = new InstalledMod { Manifest = man, Folder = folder };
+                InstalledMod m;
+                var own = Path.Combine(Game.ModsDir, id);
+                if (File.Exists(Path.Combine(own, "mod.json")))
+                    m = new InstalledMod { Manifest = ModManifest.Read(Path.Combine(own, "mod.json")), Folder = own, InOwnFolder = true };
+                else
+                {
+                    m = new InstalledMod { Folder = Game.ModsDir };
+                    var pkg = Path.Combine(Game.ModsDir, id + ".k2mod");
+                    m.Manifest = row != null && row.TryGetValue("manifest", out var o) && o is Dictionary<string, object> d ? ModManifest.FromJson(d)
+                        : File.Exists(pkg) ? ModPackage.ReadManifest(pkg)
+                        : new ModManifest { Id = id, Name = id };
+                }
+                if (!string.Equals(m.Manifest.Id, id, StringComparison.OrdinalIgnoreCase)) return null;
                 return m.IsInstalled || m.HasPackage ? m : null;
             }
-            catch (Exception ex) when (ex is FormatException || ex is IOException || ex is ModException)
+            catch (Exception ex) when (ex is FormatException || ex is IOException || ex is ModException || ex is InvalidDataException || ex is UnauthorizedAccessException)
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Moves mods out of the Mods\&lt;id&gt;\ folders of manager builds before 2026-10-11, so every .rwd sits
+        /// straight in Mods\. Skipped while the game runs (it holds mounted archives open); a mod that cannot
+        /// move stays where it is and keeps working, and is tried again next time.
+        /// </summary>
+        void MoveOutOfFolders()
+        {
+            var old = Mods.Where(m => m.InOwnFolder).ToList();
+            if (old.Count == 0 || GameInstall.IsGameRunning()) return;
+            Locked(() =>
+            {
+                foreach (var m in old)
+                {
+                    var names = new[] { m.Id + ".k2mod", m.Id + ".rwd" };
+                    // never overwrite a file already in Mods\ (one moved by an earlier, interrupted try is fine: its source is gone)
+                    if (names.Any(n => File.Exists(Path.Combine(m.Folder, n)) && File.Exists(Path.Combine(Game.ModsDir, n)))) continue;
+                    try
+                    {
+                        foreach (var n in names)
+                            if (File.Exists(Path.Combine(m.Folder, n))) File.Move(Path.Combine(m.Folder, n), Path.Combine(Game.ModsDir, n));
+                        File.Delete(Path.Combine(m.Folder, "mod.json"));
+                        if (!Directory.EnumerateFileSystemEntries(m.Folder).Any()) Directory.Delete(m.Folder);
+                        m.Folder = Game.ModsDir;
+                        m.InOwnFolder = false;
+                    }
+                    catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { }
+                }
+                Save();
+                return 0;
+            });
         }
 
         public InstalledMod Find(string id) => Mods.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.OrdinalIgnoreCase));
@@ -164,12 +217,13 @@ namespace K2Mods
             Directory.CreateDirectory(Game.ModsDir);
             var state = new Dictionary<string, object>
             {
-                ["format"] = 1L,
+                ["format"] = 2L,   // 2: each row carries the mod's mod.json ("manifest"); 1 kept it in Mods\<id>\mod.json
                 ["mods"] = Mods.Select(m => (object)new Dictionary<string, object>
                 {
                     ["id"] = m.Id,
                     ["enabled"] = m.Enabled,
                     ["builtAgainst"] = m.BuiltAgainst,
+                    ["manifest"] = m.Manifest.ToJson(),
                 }).ToList(),
             };
             WriteText(StatePath, Json.Write(state) + "\n");
@@ -234,9 +288,8 @@ namespace K2Mods
                 r.Upgraded = true;
                 r.OldVersion = existing.Manifest.Version;
             }
-            var folder = Path.Combine(Game.ModsDir, man.Id);
-            Directory.CreateDirectory(folder);
-            var mod = existing ?? new InstalledMod { Folder = folder };
+            Directory.CreateDirectory(Game.ModsDir);
+            var mod = existing ?? new InstalledMod { Folder = Game.ModsDir };
             mod.Manifest = man;
             mod.Problem = null;
             mod.ForgetFiles();
@@ -260,7 +313,7 @@ namespace K2Mods
                 mod.BuiltAgainst = null;
                 if (File.Exists(mod.PackagePath)) File.Delete(mod.PackagePath);
             }
-            WriteText(Path.Combine(folder, "mod.json"), man.ToJsonText());
+            if (mod.InOwnFolder) WriteText(Path.Combine(mod.Folder, "mod.json"), man.ToJsonText());   // not moved up yet; Save() keeps it in mods.json too
 
             if (existing == null) Mods.Add(mod);
             r.Mod = mod;
@@ -376,14 +429,19 @@ namespace K2Mods
             return o;
         }
 
-        /// <summary>Removes a mod's files (only the ones the manager wrote) and its folder if that leaves it empty.</summary>
+        /// <summary>Removes a mod's files (only the ones the manager wrote), and an older per-mod folder if that leaves it empty.</summary>
         public void Remove(InstalledMod m)
         {
             Mods.Remove(m);
-            foreach (var f in new[] { m.RwdPath, m.PackagePath, Path.Combine(m.Folder, "mod.json") })
+            foreach (var f in new[] { m.RwdPath, m.PackagePath })
                 if (File.Exists(f)) File.Delete(f);
-            if (Directory.Exists(m.Folder) && !Directory.EnumerateFileSystemEntries(m.Folder).Any())
-                Directory.Delete(m.Folder);
+            if (m.InOwnFolder)
+            {
+                var mf = Path.Combine(m.Folder, "mod.json");
+                if (File.Exists(mf)) File.Delete(mf);
+                if (Directory.Exists(m.Folder) && !Directory.EnumerateFileSystemEntries(m.Folder).Any())
+                    Directory.Delete(m.Folder);
+            }
             Save();
         }
 

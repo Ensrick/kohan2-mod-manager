@@ -72,10 +72,15 @@ gives an identical archive.
 ## Installed layout
 
 ```
-<game>\Mods\mods.json                   load order, on/off, the Data.rwd each mod was built against
-<game>\Mods\<id>\<id>.rwd               the archive the game mounts
-<game>\Mods\<id>\<id>.k2mod             the package (kept to rebuild after game updates)
-<game>\Mods\<id>\mod.json
-<game>\startup\autoexec_mods.txt        "addmod Mods/<id>/<id>.rwd" per ticked mod, in order
+<game>\Mods\<id>.rwd                    the archive the game mounts
+<game>\Mods\<id>.k2mod                  the package (kept to rebuild after game updates)
+<game>\Mods\mods.json                   load order, on/off, the Data.rwd each mod was built
+                                        against, and each mod's mod.json ("manifest")
+<game>\startup\autoexec_mods.txt        "addmod Mods/<id>.rwd" per ticked mod, in order
 <game>\startup\disabled\                other startup scripts the player turned off
 ```
+
+A `.k2mod` or `.rwd` put in `Mods\` by hand (or left after `mods.json` is lost) shows up in
+the list, turned off; an archive alone takes its file name as its id and name. Manager builds
+before 2026-10-11 kept each mod in `Mods\<id>\` with its own `mod.json` (mods.json format 1);
+the manager moves those up into `Mods\` the next time it starts while the game is closed.

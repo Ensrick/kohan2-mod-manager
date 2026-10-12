@@ -16,6 +16,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   the same patches as kohan2-battleborn's `tools/bbpatch.py` (all 127 Battleborn patches
   identical) and builds Battleborn byte-identical to its Python build.
 - One managed startup script, `startup\autoexec_mods.txt`, with an `addmod` line per mod.
+- Flat layout (2026-10-11): each mod's `.rwd` sits straight in `Mods\` (`Mods\<id>.rwd`,
+  next to its `Mods\<id>.k2mod`), no folder per mod; mod details move into `Mods\mods.json`
+  (format 2). Mods in the old `Mods\<id>\` folders are moved up automatically while the game
+  is closed. A `.k2mod` or `.rwd` dropped into `Mods\` by hand now shows up in the list, off.
 - Icon (2026-10-11): gold-rimmed Kohan II blue shield with gold "K2" ("MODS" ribbon from
   48 px up), on the exe, both windows and `.k2mod` files. Drawn by `art/make_icon.py`
   (Pillow, Georgia Bold / Segoe UI Black); the `.k2mod` registration re-announces itself
