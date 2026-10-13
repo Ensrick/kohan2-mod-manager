@@ -1,5 +1,15 @@
 # Kohan II Mod Manager
 
+> **Archived (2026-10-13).** Work continues as contributions to
+> [Paw's Launcher](https://github.com/VasiliyPaw/PawsPatchLauncher): RWD packing, the plugin loader and the
+> multiplayer fixes (fast save transfer, save copies, crash fixes, drop and rejoin) are being turned into pull
+> requests there. Use Paw's Launcher; this repository stays read-only for reference.
+>
+> **Known issue in 0.1.0-beta.11 and beta.12 (not fixed here):** Multiplayer Fixes reads the admin node's byte at
+> +0x2ed as "backup mode"; it is the "disconnecting" flag, and backup mode is +0x2f4 (`TGC_AdminNode::SetBackupMode`
+> 0x54f3b6). So the vote to drop a silent player in `pause_on_drop` most likely never fires, and a player who took
+> over from a crashed host is not recognised as such. Turn Multiplayer Fixes off if you still have it.
+
 One small program for **Kohan II: Kings of War** (Steam): players install and switch mods with
 a few clicks, and mod authors turn their work into a package that contains none of the
 game's own files.
