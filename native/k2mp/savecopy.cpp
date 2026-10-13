@@ -93,6 +93,42 @@ int SessionState(void* session) {
     }
 }
 
+using IsFromResourceFn = bool(__cdecl*)(void* settings);
+
+// The walk the save task starts with (game::kSaveSourceWalk), read-only and checked, so a copy is only attempted
+// where the game's own code would not fault: 0 ready, 1 a resource without create settings, 2 a source resource whose
+// header is not loaded, 3 a chain too long to trust, -1 unreadable. `name` gets the offending resource's name.
+int SourcesReady(wchar_t* name, size_t count) {
+    name[0] = 0;
+    __try {
+        void* world = *reinterpret_cast<void**>(g_base + game::kGWorld);
+        if (!world) return -1;
+        auto* res = *reinterpret_cast<const uint8_t**>(static_cast<char*>(world) + 0x28);
+        if (!res) return -1;
+        if (!(*reinterpret_cast<const uint32_t*>(res + game::kResourceFlags) & game::kResourceMadeFromOther)) return 0;
+        const auto isFromResource = reinterpret_cast<IsFromResourceFn>(g_base + game::kIsFromResourceSettings);
+        for (int depth = 0; depth < 16; ++depth) {
+            const wchar_t* text = *reinterpret_cast<const wchar_t* const*>(res + game::kResourceName);
+            name[0] = 0;
+            if (text) wcsncpy_s(name, count, text, _TRUNCATE);
+            void* settings = *reinterpret_cast<void* const*>(res + game::kResourceCreateSettings);
+            if (!settings) return 1;
+            if (!isFromResource(settings)) return 0;
+            res = *reinterpret_cast<const uint8_t* const*>(static_cast<char*>(settings) + game::kSettingsSource);
+            if (!res) return 1;
+            if (!(*reinterpret_cast<const uint32_t*>(res + game::kResourceFlags) & game::kResourceHeaderLoaded)) {
+                text = *reinterpret_cast<const wchar_t* const*>(res + game::kResourceName);
+                name[0] = 0;
+                if (text) wcsncpy_s(name, count, text, _TRUNCATE);
+                return 2;
+            }
+        }
+        return 3;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
 // Exactly what KKC_Session::CreateSaveGameTask does (new task, construct, queue), except that the task is ours, not
 // the session's, and that we then wait for it with the engine's own TGC_ResourceManagerTask::Block, the call the
 // session itself uses to wait for an unfinished task: it runs a task that has not started right here, or waits for
@@ -145,6 +181,15 @@ void __cdecl OnClientSave(void* session) {
         k2mp::Log("save copy skipped: file \"%s\", session state %d", k2mp::Utf8(name).c_str(), state);
         return;
     }
+    wchar_t source[MAX_PATH];
+    const int ready = SourcesReady(source, MAX_PATH);
+    if (ready != 0) {
+        static const char* const kWhy[] = {"cannot be read", "", "has no create settings", "is not loaded",
+                                           "chain is too long"};
+        k2mp::Log("save copy of \"%s\" skipped: the game's save code would fail here (map source \"%s\" %s)",
+                  k2mp::Utf8(name).c_str(), k2mp::Utf8(source).c_str(), kWhy[ready + 1]);
+        return;
+    }
     const ULONGLONG start = GetTickCount64();
     DWORD exceptionCode = 0;
     const int status = WriteCopy(copy.c_str(), &exceptionCode);
@@ -187,6 +232,10 @@ const char* const kNeeds[] = {
     "TGC_ResourceManagerTask::Block",
     "engine string ctor",
     "engine string release",
+    "save task source walk",
+    "save task source step",
+    "save task settings read",
+    "settings type check",
 };
 
 }  // namespace

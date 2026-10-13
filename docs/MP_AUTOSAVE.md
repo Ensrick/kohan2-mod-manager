@@ -1,67 +1,57 @@
 # Multiplayer autosave
 
 Issue #3. Turned on with the manager's **Autosave multiplayer games** box or
-`k2mod autosave on [--minutes N]`.
+`k2mod autosave on [--minutes N]`, which also turn on the Multiplayer Fixes plugin.
 
-## What it installs
+## What it does
 
-| File | Content |
+While this PC **hosts** a running multiplayer match, the plugin (`native/k2mp/autosave.cpp`) saves the
+match every N minutes (default 5) into "MP Autosave A" and "MP Autosave B" in turn. It runs the game's
+own `GameSave "Save/MP Autosave A.RSG"` command, the same network order a save from the menu sends, from
+the plugin's tick on the game's own thread. Every player's game pauses for the save as for any
+multiplayer save; players whose plugin has save copies on also write "MP Autosave A (copy)" and so on.
+
+| Setting (`<game>\Mods\k2mp.ini`) | |
 |---|---|
-| `<game>\user.txt` | a marked block: `Exec Mods/mp_autosave.txt`. Anything else in the file is kept. |
-| `<game>\Mods\mp_autosave.txt` | `WaitState game`, then twice: `Wait <N*60>`, `WaitState game`, `GameSave "Save/MP Autosave A.RSG"` (then `B`); then `Exec` itself again. |
+| `[features] autosave = 1` | on; off when missing or 0 |
+| `[autosave] minutes = 5` | 1 to 120 |
 
-Saves land in `Documents\Kohan2\data\Save\`. To resume after a crash: host, choose
-**Load saved game**, pick the newer of "MP Autosave A" and "MP Autosave B".
+It saves only when all of these hold (`autosave::HostingMatch`): this PC's admin node is the server, not
+in backup mode; the session is in a match (state 2 or 4, the states `KKC_Session::GameSave` accepts);
+at least one other PC is connected (so never in single player, which has the game's own autosave). The
+first save comes N minutes after the match is first seen; each save is logged in `Mods\plugins.log`
+(`autosave: saving "MP Autosave A"`, then `host save ...` with its size and SHA-256).
 
-## Why it works
+To resume after a crash: host, choose **Load saved game**, pick the newest "MP Autosave" (or a
+"(copy)" if the host's PC is gone). Players without the file get it through the game's transfer,
+which the plugin speeds up on the host (fast transfers).
 
-Static analysis of k2.exe 1.3.68 (Dev Build 4345.17; addresses are virtual addresses in the
-image once Steam has unpacked it), plus a real match log from 2026-10-11.
+## Why not a script (manager 0.1.0-beta.2 to beta.8)
 
-- **Start-up order** (comment in the game's `start.txt`): autoexec, vars, command line, UI,
-  `start.txt` from the depots, then `user.txt` from the game folder.
-- **Script pipelines.** `Exec` (handler 0x53e1d1) creates a new pipeline and queues the
-  script's lines on it; `ExecHere` runs on the current one. `Wait <s>` (0x53e2e8) sets the
-  pipeline's wake time to app time + s and is refused on the main pipeline ("Cannot use the
-  'wait' command on the main pipeline"), so the loop must be started with `Exec`. The game's
-  own `UI/start.txt` uses `WaitState game` and `WaitOrders` in its aliases.
-- **`GameSave "<path>"`** is a network order (`KKC_GameSaveOrder`). `KKC_Session::GameSave`
-  (0x5624d5) first drops orders whose sender is not the host ("GameSave order from non-host
-  (ignoring)"). On the host, in session state 2 or 4, it creates the save task; on the
-  others it shows "The host is saving the game." and waits for the host's task. A client's
-  loop therefore saves nothing and pauses nobody; the host's loop saves for everyone.
-- **The game's own autosave** (`KKF_AutoSaveQueue`, 0x540ad9) issues exactly this command
-  (`GameSave "Save/Autosave<n>.RSG"`). Its timer (0x540c3b) has several gates; the options
-  screen calls it "Auto-Save (single-player)", and no "Auto-save: queued" line appears in
-  any of 115 logs on the test PC.
-- **Match log, 2026-10-11** (client side, host saved by hand after a player froze):
-  `The host is saving the game.` / `NET: GameSave on client` / `ALL_TASKS_SUCCEEDED`, the
-  pause lasted about 1.2 s. On reload the client checked its own copy:
-  `_filename Save/<name>.RSG, _crc = <c>` then `_crc = <c>, map_file = <c>`.
-- **Loading a save in staging:** `KKC_Session::SendUpdateMapStatus` (0x568660) reports
-  status 1 when the player's copy has the host's CRC, and status 2 (wants the file) when the
-  player has none; the game has a file transfer for that (`FileTransfer.cpp`,
-  "staging_percent_downloaded"). A copy with a different CRC is refused ("Your version of %s
-  is different from the host's version").
+Those versions installed a loop in the game's script language: a block in `<game>\user.txt` ran
+`Exec Mods/mp_autosave.txt`, which did `WaitState game`, `Wait <N*60>`, `GameSave ...` in a loop. On the
+test rig (2026-10-12) that loop broke the game: `WaitState` gives up after about a minute, and when no
+match is running by then it throws ("WaitState 'game' time out. Current state 'staging'"); the game
+caught it as an unhandled exception, wrote a crash dump and stopped answering the rig's own script. The
+manager now removes that loop wherever it finds it (keeping anything else in `user.txt`) and moves its
+interval to the plugin: at start-up, and on `k2mod autosave`.
 
-## Not verified yet
+## Test status
 
-The loop has not run in the game. Test, in this order:
+- Test rig (two copies on one PC, LAN), k2mp 0.2.0-dev.5, 1-minute interval: the host's plugin saved
+  "MP Autosave A" one minute into the match (220,646 bytes) and issued "B" a minute later; the client's
+  plugin never saved. The client's save copy crashed that run (next section), so B never happened.
+- k2mp 0.2.0-dev.6, same test: the host saved "MP Autosave A" and "MP Autosave B" a minute apart
+  (220,638 and 220,867 bytes), the client paused for both and played on, its plugin never saved, and it
+  skipped its copies with the new check (its lobby had received a saved game first).
+- Not yet tried in an online match.
 
-1. Single player: `k2mod autosave on --minutes 1`, start a skirmish, play 3 minutes.
-   Expect `executing "GameSave \"Save/MP Autosave A.RSG\""` in the log and the file in
-   `Documents\Kohan2\data\Save\`; nothing in the log while in menus.
-2. Multiplayer, host with it on: every player pauses for about a second each interval;
-   the host gets the files; clients log `NET: GameSave on client`.
-3. Multiplayer, only a client with it on: the logs show "GameSave order from non-host
-   (ignoring)" and nobody pauses.
-4. Resume: host loads "MP Autosave B"; a player without the file should see a download
-   percentage in staging.
+## Save copies and the "source" resources
 
-## Not built: a copy on every PC
-
-Other players' games never write the save (the client branch of `KKC_Session::GameSave`
-only pauses), so if the host's PC is gone for good, so is the save. A copy on every PC
-needs code in that branch to write the same save locally, and then only helps if a client's
-file is byte-identical to the host's (the CRC check above). That means a DLL hook, which
-breaks with each game update and is a modified client in online play.
+The game's save task (`KKC_ResourceManagerTaskSaveGame::SaveGame` 0x5c1473) first follows the
+resources the world was made from and reads a missing one without checking. On the rig's client, whose
+lobby had first picked a saved game and then a random map, that chain ended at the transferred save,
+never loaded: `ASSERT: source_res->IsHeaderLoaded()`, `ASSERT: original_create_settings`, then an
+access violation on the loader thread. The host's own save of the same moment was fine. Save copies now
+make the same walk first, read-only, and skip the copy with a log line where the game's code would
+fail (`save copy of ... skipped: ...`).

@@ -28,10 +28,12 @@ namespace K2ModCli
         turn it on, and move the loose files to a loose_backup_<date> folder next to them (never
         deleted). After this you can only play online with players who use the same packed mod,
         not with players who installed it by hand.
-  k2mod autosave [on|off] [--minutes N]         Multiplayer autosave: whoever hosts saves the match every
-        N minutes (default 5) into ""MP Autosave A"" and ""B"", so a crashed game can be resumed with
-        Load saved game. Starts with the game's next launch. No argument: show whether it is on.
-  k2mod plugin [list | on <id> | off <id>]      Game plugins: DLLs that the plugin loader (winmm.dll in
+  k2mod autosave [on|off] [--minutes N]         Multiplayer autosave (done by the Multiplayer Fixes
+        plugin, which this turns on): when you host, the match is saved every N minutes (default 5)
+        into ""MP Autosave A"" and ""B"", so a crashed game can be resumed with Load saved game. From
+        the game's next launch. No argument: show whether it is on (and move an old autosave script
+        of manager beta.2 to beta.8 to the plugin).
+  k2mod plugin [list | on <id> | off <id>]      Game plugins: DLLs that the plugin loader (avifil32.dll in
         the game folder) starts inside k2.exe. Not part of the multiplayer version check.
   k2mod fingerprint [--report <file>] [--compare <file>]  Game files code: the game data this install
         loads (k2.exe, Data.rwd, Music.rwd, and every file mods and loose folders such as
@@ -247,12 +249,16 @@ Options: --game ""<Kohan II folder>"" (default: found through Steam)
                     case "autosave":
                     {
                         var g = Game();
+                        var said = new List<string>();
                         if (a.Count > 1 && a[1] == "on")
-                            MpAutosave.Enable(g, minutesOpt != null ? int.Parse(minutesOpt) : MpAutosave.Minutes(g) ?? MpAutosave.DefaultMinutes);
+                            said = ModLibrary.Locked(() => MpAutosave.Enable(g, minutesOpt != null ? int.Parse(minutesOpt) : MpAutosave.Minutes(g) ?? MpAutosave.DefaultMinutes));
                         else if (a.Count > 1 && a[1] == "off")
-                            MpAutosave.Disable(g);
+                            said = ModLibrary.Locked(() => MpAutosave.Disable(g));
                         else if (a.Count > 1)
                             throw new ModException("autosave takes on or off");
+                        else
+                            said = ModLibrary.Locked(() => MpAutosave.MigrateLegacy(g));
+                        foreach (var m in said) Console.WriteLine("  " + m);
                         var min = MpAutosave.Minutes(g);
                         Console.WriteLine(min == null ? "multiplayer autosave: off" : $"multiplayer autosave: on, every {min} min (from the next game start)");
                         var last = MpAutosave.Latest();

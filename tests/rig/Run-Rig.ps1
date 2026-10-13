@@ -7,6 +7,11 @@
 #                        Checks the host's save, the client's "(copy)" and what both plugins logged.
 #   -Scenario Transfer   host: LAN game set to load a save SaveCopy left, wait, launch, quit. client: join without
 #                        that save and receive it through the game's own file transfer. Measures how long it takes.
+#   -Scenario Autosave   the plugin's autosave on for the run (every -AutosaveMinutes) in both copies; host: LAN game,
+#                        random map, play two intervals, quit. client: join, play, quit first. Checks the host's
+#                        "MP Autosave A/B", the client's copies, and that only the host's plugin saved.
+#   -Scenario HostLeaves host: LAN lobby, quits once the client is in it. client: join, stay, quit. Checks that the
+#                        client survives the host leaving (the game crashed there about half the time: MULTIPLAYER.md).
 #
 # Each copy gets its own Documents folder (the test shfolder.dll, K2_RIG_DOCUMENTS) under %LOCALAPPDATA%\Kohan2Rig:
 # a copy of the player's game data (loose mods included, so both load the same data), but its own saves, replays,
@@ -15,12 +20,13 @@
 # Mods\rig\ scripts; its Logs folder (the game keeps only about ten logs) is copied aside first.
 # Never run this while someone is playing.
 param(
-    [ValidateSet('SaveCopy', 'Transfer')] [string] $Scenario = 'SaveCopy',
+    [ValidateSet('SaveCopy', 'Transfer', 'Autosave', 'HostLeaves')] [string] $Scenario = 'SaveCopy',
     [string] $Game = 'C:\Program Files (x86)\Steam\steamapps\common\Kohan II',
     [int] $Port = 5860,                    # the first port the game tries for a LAN host (5860-5869)
     [int] $LaunchAfter = 90,               # seconds the host waits in its lobby for the client before launching
     [int] $SaveAfter = 60,                 # SaveCopy: seconds into the match before the host saves
     [string] $SaveName = 'Rig Test',
+    [int] $AutosaveMinutes = 1,            # Autosave: the loop's interval
     [hashtable] $TransferSettings = @{},  # written to Mods\k2mp.ini [transfer] for this run (both copies read it), then removed
     [hashtable] $PluginSettings = @{},    # more of Mods\k2mp.ini for this run: @{ section = @{ key = value } }
     [string[]] $ExtraSettings = @()       # extra lines for both copies' User\UVars.tgi, e.g. 'float NetMaxBandwidthToUnknown = 400000'
@@ -47,7 +53,16 @@ if ((Test-Path $shfolderInGame) -and (Get-FileHash $shfolderInGame).Hash -ne (Ge
 }
 $iniSections = [ordered]@{}
 if ($TransferSettings.Count) { $iniSections['transfer'] = $TransferSettings }
+if ($Scenario -eq 'Autosave') {
+    $iniSections['features'] = @{ autosave = 1 }
+    $iniSections['autosave'] = @{ minutes = $AutosaveMinutes }
+}
 foreach ($k in $PluginSettings.Keys) { $iniSections[$k] = $PluginSettings[$k] }
+# A k2mp.ini an earlier run left behind (a copy outlived the wait at the end) carries the marker; anything else is the
+# player's own settings and is never touched.
+$rigIniMarker = '; written by tests/rig/Run-Rig.ps1 for one run'
+if ((Test-Path $ini) -and (Get-Content $ini -TotalCount 1) -eq $rigIniMarker) { Remove-Item $ini; 'removed a k2mp.ini an earlier rig run left behind' }
+if ((Test-Path $ini) -and -not $iniSections.Count) { throw 'Mods\k2mp.ini exists (the player''s own settings): the rig would run with them; move it aside first' }
 if ($iniSections.Count -and (Test-Path $ini)) { throw 'Mods\k2mp.ini exists already; not overwriting it' }
 if ($Scenario -eq 'Transfer' -and -not (Get-ChildItem $hostSaves -Filter '*.RSG' -ErrorAction SilentlyContinue)) {
     throw 'the rig host has no save to load: run -Scenario SaveCopy first'
@@ -92,6 +107,10 @@ foreach ($d in $hostDocs, $clientDocs) {
 foreach ($old in Get-ChildItem $clientSaves -Filter '*.RSG') { Remove-Item $old.FullName }
 if ($Scenario -eq 'SaveCopy') {
     foreach ($n in "$SaveName.RSG", "$SaveName (copy).RSG") { $p = Join-Path $hostSaves $n; if (Test-Path $p) { Remove-Item $p } }
+}
+$autosaves = 'MP Autosave A', 'MP Autosave B'
+if ($Scenario -eq 'Autosave') {
+    foreach ($n in $autosaves) { $p = Join-Path $hostSaves "$n.RSG"; if (Test-Path $p) { Remove-Item $p } }
 }
 
 # ---------------------------------------------------------------- scripts
@@ -147,6 +166,54 @@ Wait $($SaveAfter + 90)
 Echo rig: client end
 ReallyQuit
 "@
+} elseif ($Scenario -eq 'HostLeaves') {
+    # The client joins about 65 s after the host's lobby opens; the host leaves 30 s later without a word (ReallyQuit,
+    # like a crash), and the client's game finds out by timeout and takes over.
+    $hostScript = @"
+Wait 45
+$hostOpen
+SelectLaunchType RANDOM_MAP
+Echo rig: host waiting in its lobby
+Wait 95
+Echo rig: host leaving
+ReallyQuit
+"@
+    $clientScript = @"
+Wait 45
+$join
+Echo rig: client in the lobby
+Wait 150
+Echo rig: client end
+ReallyQuit
+"@
+} elseif ($Scenario -eq 'Autosave') {
+    # The loop waits for the match, then saves every $AutosaveMinutes minutes (A, then B). The client leaves first: a
+    # player still connected when the host quits can crash (MULTIPLAYER.md, game bug).
+    $inMatch = $AutosaveMinutes * 120 + 45
+    $hostScript = @"
+Wait 45
+$hostOpen
+SelectLaunchType RANDOM_MAP
+Echo rig: host waiting in its lobby
+Wait $LaunchAfter
+Echo rig: host launching
+StagingLaunch
+WaitState game
+Echo rig: host in the match
+Wait $inMatch
+Echo rig: host end
+ReallyQuit
+"@
+    $clientScript = @"
+Wait 45
+$join
+Echo rig: client waiting
+WaitState game
+Echo rig: client in the match
+Wait $($inMatch - 20)
+Echo rig: client end
+ReallyQuit
+"@
 } else {
     # The load dialog's Commit takes the save its list selects first.
     $hostScript = @"
@@ -182,12 +249,31 @@ if ($iniSections.Count) {
         "[$section]"
         foreach ($e in $iniSections[$section].GetEnumerator()) { "$($e.Key) = $($e.Value)" }
     }
-    $iniLines | Set-Content $ini -Encoding ascii
+    @($rigIniMarker) + $iniLines | Set-Content $ini -Encoding ascii
     "plugin settings for this run: $($iniLines -join '; ')"
 }
 Copy-Item $rigShfolder $shfolderInGame -Force
+$runLimit = switch ($Scenario) {
+    'Autosave' { $LaunchAfter + $AutosaveMinutes * 120 + 300 }
+    'HostLeaves' { 420 }
+    default { $LaunchAfter + $SaveAfter + 300 }
+}
 
-function Newest-Log { Get-ChildItem $logs -Filter 'log-*.log' | Sort-Object LastWriteTime -Descending | Select-Object -First 1 }
+# A copy's log is the log-NNN.log file that appears after it starts. (Not the most recently written log: the host
+# keeps writing its own after the client starts.)
+function Log-Names { @(Get-ChildItem $logs -Filter 'log-*.log' | ForEach-Object Name) }
+function Wait-NewLog($known, $seconds) {
+    $t = Get-Date
+    while (((Get-Date) - $t).TotalSeconds -lt $seconds) {
+        # only a running game's log (no -ok/-crash suffix): at start-up the game also renames the log of a copy that
+        # was killed before to log-NNN-crash.log, which is new too
+        $new = Get-ChildItem $logs -Filter 'log-*.log' | Where-Object { $_.Name -match '^log-\d+\.log$' -and $known -notcontains $_.Name } |
+            Sort-Object { [int]($_.Name -replace '\D', '') } -Descending | Select-Object -First 1
+        if ($new) { return $new.FullName }
+        Start-Sleep 1
+    }
+    throw 'no new game log appeared'
+}
 function Current-Length($path) {
     # The directory entry lags while the game holds the file open; open it shared to read the real length.
     try { $fs = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite, Delete'); $n = $fs.Length; $fs.Dispose(); $n } catch { 0 }
@@ -197,11 +283,9 @@ $hostPid = $clientPid = $null
 $firstSeen = $complete = $lastGrew = $arriving = $hostCopy = $null
 $want = 0; $lastSize = -1
 try {
-    $before = (Newest-Log).FullName
+    $known = Log-Names
     $hostPid = & $start -Game $Game -Arguments '+Exec Mods/rig/host.txt' -Env @{ K2_RIG_DOCUMENTS = $hostDocs }
-    $t0 = Get-Date
-    while ((Newest-Log).FullName -eq $before -and ((Get-Date) - $t0).TotalSeconds -lt 30) { Start-Sleep 1 }
-    $hostLog = (Newest-Log).FullName
+    $hostLog = Wait-NewLog $known 30
     "host: process $hostPid, log $(Split-Path $hostLog -Leaf)"
     # The game buffers its log, so readiness comes from Windows: the host's game exists once it listens on the port.
     $t0 = Get-Date
@@ -211,14 +295,13 @@ try {
     }
     "host: game created"
 
+    $known = Log-Names
     $clientPid = & $start -Game $Game -Arguments '+Exec Mods/rig/client.txt' -Env @{ K2MP_RIG_JOIN = "127.0.0.1:$Port"; K2_RIG_DOCUMENTS = $clientDocs }
-    $t0 = Get-Date
-    while ((Newest-Log).FullName -eq $hostLog -and ((Get-Date) - $t0).TotalSeconds -lt 60) { Start-Sleep 1 }
-    $clientLog = (Newest-Log).FullName
+    $clientLog = Wait-NewLog $known 60
     "client: process $clientPid, log $(Split-Path $clientLog -Leaf)"
 
     $t0 = Get-Date
-    while ((Get-Process -Id $hostPid, $clientPid -ErrorAction SilentlyContinue) -and ((Get-Date) - $t0).TotalSeconds -lt ($LaunchAfter + $SaveAfter + 300)) {
+    while ((Get-Process -Id $hostPid, $clientPid -ErrorAction SilentlyContinue) -and ((Get-Date) - $t0).TotalSeconds -lt $runLimit) {
         if ($Scenario -eq 'Transfer') {
             if (-not $arriving) {
                 $new = Get-ChildItem $clientSaves -Filter '*.RSG' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -238,8 +321,8 @@ try {
     $left = Get-Process -Id $hostPid, $clientPid -ErrorAction SilentlyContinue
     if ($left) { "still running after the time limit: $($left.Id -join ', ') (left running for a look)" }
 } finally {
-    # a copy can take a minute or two to close after ReallyQuit; the game folder must not keep the test files
-    $exitBy = (Get-Date).AddSeconds(150)
+    # a copy can take minutes to close after ReallyQuit (a client that lost its host first times it out); the game folder must not keep the test files
+    $exitBy = (Get-Date).AddSeconds(300)
     $ours = @($hostPid, $clientPid | Where-Object { $_ })
     while ($ours -and (Get-Process -Id $ours -ErrorAction SilentlyContinue) -and (Get-Date) -lt $exitBy) {
         Start-Sleep -Seconds 2
@@ -271,6 +354,31 @@ if ($Scenario -eq 'SaveCopy') {
     $checks['client plugin logged the copy'] = [bool](Select-String -Path (Join-Path $mods 'plugins*.log') -Pattern 'save copy ".*" written' -Quiet)
     # Keep the copy in the host's folder too, so a Transfer run has two saves to choose from.
     if (Test-Path $copy) { Copy-Item $copy $hostSaves -Force }
+} elseif ($Scenario -eq 'Autosave') {
+    "--- saves"
+    foreach ($n in $autosaves) {
+        foreach ($p in (Join-Path $hostSaves "$n.RSG"), (Join-Path $clientSaves "$n (copy).RSG")) {
+            if (Test-Path $p) { '{0}: {1} bytes' -f (Split-Path $p -Leaf), (Get-Item $p).Length } else { '{0}: missing' -f (Split-Path $p -Leaf) }
+        }
+        $checks["host saved $n"] = Test-Path (Join-Path $hostSaves "$n.RSG")
+        $checks["client wrote $n (copy)"] = Test-Path (Join-Path $clientSaves "$n (copy).RSG")
+    }
+    $hostSaving = @(Select-String -Path (Join-Path $mods 'plugins.log') -Pattern 'autosave: saving' -SimpleMatch -ErrorAction SilentlyContinue).Count
+    $clientSaving = @(Select-String -Path (Join-Path $mods 'plugins.2.log') -Pattern 'autosave: saving' -SimpleMatch -ErrorAction SilentlyContinue).Count
+    $checks['host plugin saved twice'] = $hostSaving -ge 2
+    $checks['client plugin never saved'] = $clientSaving -eq 0
+    $clientLogNow = Final-Log $clientLog
+    $pauses = if ($clientLogNow) { @(Select-String -Path $clientLogNow.FullName -Pattern 'NET: GameSave on client' -SimpleMatch).Count } else { 0 }
+    "client paused for $pauses host save(s)"
+    $checks['client paused for the host''s saves'] = $pauses -ge 2
+} elseif ($Scenario -eq 'HostLeaves') {
+    $clientLogNow = Final-Log $clientLog
+    $text = if ($clientLogNow) { Get-Content $clientLogNow.FullName -Raw } else { '' }
+    $asserts = ([regex]::Matches($text, 'ASSERT: ')).Count
+    "client: $asserts failed assertion(s), log $(if ($clientLogNow) { $clientLogNow.Name } else { 'missing' })"
+    $checks['client took over when the host left'] = $text.Contains('has taken over as host')
+    $checks['client did not crash'] = $clientLogNow -and $clientLogNow.Name -like '*-ok.log' -and -not $text.Contains('timeout waiting for mutex')
+    $checks['client ran IgnoreAsserts'] = $text.Contains('executing "IgnoreAsserts"')
 } else {
     $checks['client received the save'] = [bool]$complete
     $checks['received file identical to the host''s'] = $arriving -and (Test-Path $arriving) -and (Test-Path $hostCopy) -and (Get-FileHash $arriving).Hash -eq (Get-FileHash $hostCopy).Hash

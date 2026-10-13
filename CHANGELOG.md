@@ -2,6 +2,32 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.1.0-beta.10] - unreleased
+
+### Fixed
+- **A player left in the lobby when the host's game goes away no longer crashes** (Multiplayer Fixes 0.2.0-dev.6,
+  `ignore_asserts`, on by default). The game showed an "Assertion failed" dialog while it held a lock its main thread
+  needed, and the main thread crashed after waiting ("timeout waiting for mutex"). The plugin runs the game's own
+  `IgnoreAsserts` command at start-up: a failed check is logged and the game goes on as if Ignore had been clicked.
+  Test rig: before, 4 of 18 such runs crashed, each right after one assertion; with the fix, 3 of 3 runs survived,
+  one of them through the same assertion ("Since the original host has left, the game is no longer public").
+- **Multiplayer autosave moved into the plugin.** The script loop of beta.2 to beta.8 (`user.txt` +
+  `Mods\mp_autosave.txt`) threw about a minute after the game started when no match was running, and the game
+  wrote a crash dump. Now the plugin (`autosave`) saves when this PC hosts a running multiplayer match, every N
+  minutes into "MP Autosave A" and "B", with the game's own GameSave command. The manager's box and
+  `k2mod autosave` set it in `Mods\k2mp.ini` and turn the plugin on; an old loop is removed (other lines in
+  `user.txt` are kept) and its interval carried over. See `docs/MP_AUTOSAVE.md`.
+- Save copies no longer crash a player whose lobby first picked a saved game and then a random map: the game's
+  save code follows the world's "source" resources and reads a missing one (`ASSERT: source_res->IsHeaderLoaded()`,
+  then an access violation on its loader thread). The plugin now makes that walk first, read-only, and skips the
+  copy with a log line where the game would fail.
+
+### Added
+- Test rig: `-Scenario Autosave` and `-Scenario HostLeaves`; each copy's log is found by its new file name (the
+  most recently written log was often the other copy's); a k2mp.ini the rig wrote carries a marker line and is
+  removed at the next run if a copy outlived the end of the last one; the rig waits up to 300 s for both copies to
+  close before taking its test files out of the game folder.
+
 ## [0.1.0-beta.9] - unreleased
 
 ### Added

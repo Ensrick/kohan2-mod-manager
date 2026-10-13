@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "../k2mp/autosave.h"
 #include "../k2mp/fastsend.h"
 #include "../k2mp/game.h"
 #include "../k2mp/hook.h"
@@ -315,6 +316,38 @@ void TestFastSend() {
     g_adminPtr = g_admin;
 }
 
+
+// autosave: when it may save (host, not backup mode, a match running, another PC connected).
+void TestAutosaveState() {
+    alignas(16) static uint8_t admin[0x400], session[0x200], node[0x100];
+    static void* listNode[2] = {nullptr, nullptr};
+    auto reset = [] {
+        memset(admin, 0, sizeof(admin));
+        memset(session, 0, sizeof(session));
+        memset(node, 0, sizeof(node));
+        Put<void*>(admin, game::kAdminServer, admin);
+        Put<int>(session, game::kSessionState, 2);
+        Put<void*>(node, game::kNetNodeConnections, listNode);
+    };
+    reset();
+    Check(autosave::HostingMatch(admin, session, node), "autosave: host, match running, a player connected");
+    Put<int>(session, game::kSessionState, 4);
+    Check(autosave::HostingMatch(admin, session, node), "autosave: session state 4 counts as a match too");
+    Put<int>(session, game::kSessionState, 1);
+    Check(!autosave::HostingMatch(admin, session, node), "autosave: not in any other session state (1)");
+    reset();
+    Put<void*>(admin, game::kAdminServer, node);
+    Check(!autosave::HostingMatch(admin, session, node), "autosave: never on a PC that is not the host");
+    reset();
+    admin[game::kAdminBackupMode] = 1;
+    Check(!autosave::HostingMatch(admin, session, node), "autosave: never in backup mode");
+    reset();
+    Put<void*>(node, game::kNetNodeConnections, nullptr);
+    Check(!autosave::HostingMatch(admin, session, node), "autosave: not with nobody else connected (single player)");
+    Check(!autosave::HostingMatch(nullptr, session, node) && !autosave::HostingMatch(admin, nullptr, node),
+          "autosave: nothing before the game's objects exist");
+}
+
 }  // namespace
 
 int main() {
@@ -325,6 +358,7 @@ int main() {
     TestClientStub();
     TestHostStub();
     TestFastSend();
+    TestAutosaveState();
     std::printf("%d failure(s)\n", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

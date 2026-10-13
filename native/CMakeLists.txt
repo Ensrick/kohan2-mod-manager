@@ -42,8 +42,9 @@ k2_version_rc(loader "loader" "avifil32.dll" "Kohan II Plugin Loader"
     "${LOADER_VERSION}")
 
 # ---------------------------------------------------------------- plugin: Multiplayer Fixes
-set(K2MP_VERSION "0.2.0-dev.4")
-set(K2MP_CORE k2mp/fastsend.cpp k2mp/hook.cpp k2mp/plugin.cpp k2mp/rig.cpp k2mp/savecopy.cpp k2mp/transfer.cpp)
+set(K2MP_VERSION "0.2.0-dev.6")
+set(K2MP_CORE k2mp/autosave.cpp k2mp/fastsend.cpp k2mp/hook.cpp k2mp/plugin.cpp k2mp/rig.cpp k2mp/savecopy.cpp
+    k2mp/script.cpp k2mp/transfer.cpp)
 add_library(k2mp SHARED k2mp/k2mp.cpp ${K2MP_CORE})
 target_include_directories(k2mp PRIVATE include)
 target_compile_definitions(k2mp PRIVATE ${COMMON_DEFS} K2MP_VERSION="${K2MP_VERSION}")
@@ -51,7 +52,7 @@ target_compile_options(k2mp PRIVATE ${COMMON_OPTS})
 target_link_options(k2mp PRIVATE /SAFESEH:NO)
 k2_version_rc(k2mp "k2mp" "k2mp.dll" "Kohan II plugin"
     "Multiplayer Fixes"
-    "When hosting, sends saved games to players several times faster. Every player also keeps a copy of each multiplayer save, so anyone can host the match again if the host crashes. Tested between two copies of the game on one PC; not yet in an online match."
+    "When hosting, sends saved games to players several times faster and (if autosave is on) saves the match every few minutes. Every player keeps a copy of each multiplayer save, so anyone can host the match again if the host crashes. Stops the game's assertion dialogs from freezing it into a crash. Tested between two copies of the game on one PC; not yet in an online match."
     "${K2MP_VERSION}")
 
 # ---------------------------------------------------------------- tests

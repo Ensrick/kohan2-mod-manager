@@ -79,7 +79,8 @@ needs the sync log of a second player from the same match.
 | 2 | **Save copies** (`save_copies`): every non-host PC writes `<save> (copy).RSG` when the host saves, with the engine's own save task while the game is paused for the host's save. Host and players log the SHA-256 of their files. | built; works in a two-player LAN match on the test rig (below); not yet in an online match |
 | 3 | **No more refused reloads**: a player whose own `X` differs from the host's is told "Your version of X is different" and cannot load; move such a file aside and download the host's instead. (Reusing copies by checksum is out: copies are never byte-identical, see below.) | planned |
 | 4 | **Fast transfers** (`fast_transfers`): the host sends a save to each player at up to 60 packets/s instead of 10. Only the host needs the plugin; players receive the game's own packets, just more of them. | built, k2mp 0.2.0-dev.4: 8.4x faster on the test rig (below); not yet in an online match |
-| 5 | **Host autosave** every few minutes, so a crash loses minutes at most. | planned (the script-based autosave in 0.1.0-beta.2 is the stopgap) |
+| 5 | **Host autosave** (`autosave`): the host saves the match every few minutes, so a crash loses minutes at most. Replaces the script loop of manager beta.2 to beta.8, which could crash the game ([MP_AUTOSAVE.md](MP_AUTOSAVE.md)). | built, k2mp 0.2.0-dev.5: saves on the test rig; not yet in an online match |
+| 5b | **No assertion dialogs** (`ignore_asserts`): the game's own `IgnoreAsserts`, so a failed check no longer freezes the game until it crashes (below). | built, k2mp 0.2.0-dev.5 |
 | 6 | **Rejoin a running match** after a drop. | planned |
 | 7 | **Desync cause** of the early desyncs. | needs a second player's sync log |
 
@@ -148,12 +149,22 @@ and can be set in `Mods\k2mp.ini`. Larger packets (the receivers take up to 4,09
 
 ## Game bug: a player still in the lobby crashes when the host leaves
 
-Seen four times on the rig (client logs of runs at 15:14, 15:48, 17:16 and 17:28): the host quits while the client
-is in the lobby; the client logs `NET: PlayerLeave()` / `ClientLeave(<host>)`, then dozens of
-`NET: PlayerLeave() called with invalid player`, `ASSERT: _data<_n_possibilities`, `ERROR: thread <a> timeout locking
-mutex <m> (owned by <b>)`, and dies with "timeout waiting for mutex" (C++ exception E06D7363) and a crash dump. The
-plugin has no code on that path (it happened with and without its tick hooks). Same family as "the host's game
-crashed and the match never resumed" in the evidence above; a fix target once its cause is traced.
+The host quits while the client is in the lobby (on the rig, `ReallyQuit`: no goodbye, like a crash). After about
+3 s the client's game times out the host, makes itself the server ("RigClient has taken over as host"), and logs
+dozens of `NET: PlayerLeave() called with invalid player`; that much happened in every run and is harmless. In 4 of
+18 runs it then logged `ASSERT: _data<_n_possibilities` (a value read from the network out of range,
+`Serialize.h`), and then died with "timeout waiting for mutex" (C++ exception E06D7363) and a crash
+dump.
+
+Cause: the assertion handler (0x700d92) shows an Abort/Retry/Ignore dialog ("Assertion failed!") unless the game's
+`IgnoreAsserts` flag is set. The thread that hit the check held a lock the main thread needs (the log names its
+owner), so while the dialog waited (unseen behind the game, or off screen on the rig) the main thread gave up waiting
+for the lock and the game crashed.
+Across 18 rig client logs (2026-10-12): all 4 crashes had exactly one `ASSERT`, none of the 14 clean runs had one.
+
+Fix: `ignore_asserts` (on by default) runs the game's own `IgnoreAsserts` command at start-up. A failed check is still
+logged (`ASSERT: ...`), and the game goes on as if Ignore had been clicked, which is all a player could do anyway.
+Rig results: see the CHANGELOG entry of the version that ships it.
 
 ## Testing save copies with real players (k2mp 0.2.0-dev.1)
 

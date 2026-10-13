@@ -92,6 +92,7 @@ namespace K2ModManager
                 await Run("Checking your mods...", p => WithData(d => ModLibrary.Locked(() =>
                 {
                     var o = ModLibrary.Load(game).RebuildStale(d, p);
+                    o.AddRange(MpAutosave.MigrateLegacy(game));
                     o.AddRange(Plugins.Sync(game));
                     return o;
                 })));
@@ -350,15 +351,13 @@ namespace K2ModManager
             if (game == null) return;
             try
             {
-                if (on) MpAutosave.Enable(game, MpAutosave.DefaultMinutes);
-                else MpAutosave.Disable(game);
-                Say(new[]
-                {
-                    on ? $"Multiplayer autosave is on. When you host, the match is saved every {MpAutosave.DefaultMinutes} minutes as \"MP Autosave A\" and \"MP Autosave B\". " +
-                         "If a game crashes, host again, choose Load saved game and pick the newer of the two."
-                       : "Multiplayer autosave is off.",
-                    GameInstall.IsGameRunning() ? "Kohan II is running: this takes effect the next time you start it." : null,
-                });
+                var msgs = ModLibrary.Locked(() => on ? MpAutosave.Enable(game, MpAutosave.DefaultMinutes) : MpAutosave.Disable(game));
+                msgs.Insert(0, on
+                    ? $"Multiplayer autosave is on (in the Multiplayer Fixes plugin). When you host, the match is saved every {MpAutosave.DefaultMinutes} minutes as \"MP Autosave A\" and \"MP Autosave B\". " +
+                      "If a game crashes, host again, choose Load saved game and pick the newest of them (players with the plugin also have \"(copy)\" files)."
+                    : "Multiplayer autosave is off.");
+                if (GameInstall.IsGameRunning()) msgs.Add("Kohan II is running: this takes effect the next time you start it.");
+                Say(msgs);
             }
             catch (Exception ex) when (Explain(ex) != null)
             {

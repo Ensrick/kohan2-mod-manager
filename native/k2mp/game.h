@@ -14,6 +14,8 @@ constexpr uint32_t kGWorld = 0x5d7fb0;           // g_gworld; the world resource
 constexpr uint32_t kResourceManager = 0x5d7fcc;  // runs resource tasks (loads, saves) on the loader thread
 constexpr uint32_t kAdminNode = 0x5d7fe4;        // this PC's network node (TGC_AdminNode)
 constexpr uint32_t kNetNode = 0x5d7fbc;          // the packet layer under it (TGC_NetNode)
+// The pointer variables of KKC_Session (the lobby and the match) and of the console that runs script commands are read
+// from the code that uses them: kSessionRead and kScriptCommandRead below.
 
 // Registers the "%USERDATA%" path token: `push dword ptr [personal folder]` (an engine string such as
 // "C:/Users/<name>/Documents/Kohan2", from SHGetFolderPathW(CSIDL_PERSONAL) + "Kohan2"). The game's work depot, where
@@ -93,11 +95,40 @@ constexpr uint32_t kConnNetConn = 0x42c;     // its TGC_NetConn
 constexpr uint32_t kNetConnLastSend = 0x90;  // float: network clock when it last sent a packet
 constexpr uint32_t kNetNodeClock = 0x50;     // float: network clock, seconds
 
+// TGC_NetNode::OnReceiveError (0x55b5d8): `mov eax, [session]; add esp, 0x14; test eax, eax; je; cmp dword [eax+0xf0],
+// 0`. Every function the game calls with ECX = [session] lies in KKC_Session's code (0x561000-0x570000).
+constexpr uint32_t kSessionRead = 0x15b643;
+// Each connection of the net node: `mov esi, [ecx+0x70]`, then {conn, next} list nodes (TGC_NetNode 0x55b4a2).
+constexpr uint32_t kForEachConnection = 0x15b4a2;
+constexpr uint32_t kNetNodeConnections = 0x70;
+// KKC_Application::ParseCommandLine (0x53d61c) runs a "+command" from the command line with
+// `mov ecx, [console]; lea eax, [string]; add esp, 0x18; push ebx (0); push eax; call RunScriptCommand`.
+constexpr uint32_t kScriptCommandRead = 0x13da73;
+constexpr uint32_t kRunScriptCommand = 0x1f9333;  // thiscall(console, engine string*, bool), ret 8: queue a command
+// The script command IgnoreAsserts (handler 0x53f7c6) sets the flag the assertion handler (0x700d92) checks before it
+// shows its Abort/Retry/Ignore dialog: with the flag set, a failed check is logged ("ASSERT: ...") and the game goes on
+// as if Ignore had been clicked.
+
 // KKC_JoinDirectDialog's join handler (0x4eedb8) reads the IP and port editboxes with the widget text getter
 // (thiscall, returns the address of the widget's engine string). Only the test rig redirects these two calls.
 constexpr uint32_t kWidgetText = 0x29f774;
 constexpr uint32_t kJoinDirectIpRead = 0x0eedd0;
 constexpr uint32_t kJoinDirectPortRead = 0x0eedf2;
+
+// KKC_ResourceManagerTaskSaveGame::SaveGame (0x5c1473) first walks the resources the world was made from: when the
+// world resource's flags (+0x8) have bit 4, it follows res -> create settings (+0x88) -> while those settings are the
+// "from a resource" kind (0x56b9f0), their resource (+0x50), asserting that each settings object exists and each
+// resource has its header loaded (flags bit 1). It reads a missing settings object anyway: a crash on the loader
+// thread. Seen on a client whose lobby had first picked a saved game and then a random map (test rig, 2026-10-12).
+constexpr uint32_t kSaveSourceWalk = 0x1c1480;
+constexpr uint32_t kSaveSourceStep = 0x1c14f7;
+constexpr uint32_t kIsFromResourceSettings = 0x16b9f0;  // bool cdecl(settings*)
+constexpr uint32_t kResourceFlags = 0x08;
+constexpr uint32_t kResourceName = 0x38;          // engine string
+constexpr uint32_t kResourceCreateSettings = 0x88;
+constexpr uint32_t kSettingsSource = 0x50;
+constexpr uint32_t kResourceMadeFromOther = 1u << 4;
+constexpr uint32_t kResourceHeaderLoaded = 1u << 1;
 
 // ---------------------------------------------------------------- resource tasks (TGC_ResourceManagerTask)
 constexpr uint32_t kTaskRefCount = 0x04;  // interlocked; the deleting destructor (vtable slot 0) runs at 0
@@ -169,6 +200,25 @@ inline constexpr Signature kSignatures[] = {
     // cmp dword [edi+0x3c], 2; jne; push ebx; lea ebx, [edi+0x3b4] (the file sender)
     {"TGC_AdminConn::UpdateFileTransferStatus", kUpdateFileTransferStatus + 0x10,
      "83 7f 3c 02 0f 85 bb 00 00 00 53 8d 9f b4 03 00 00"},
+    // mov eax, [session]; add esp, 0x14; test eax, eax; je; cmp dword [eax+0xf0], 0; je
+    {"session read", kSessionRead, "a1 ?? ?? ?? ?? 83 c4 14 85 c0 74 4d 83 b8 f0 00 00 00 00 74 44"},
+    // push esi; mov esi, [ecx+0x70]; jmp; mov ecx, [esi]; call; mov esi, [esi+4]; test esi, esi; jne; pop esi; ret
+    {"for each connection", kForEachConnection, "56 8b 71 70 eb 0a 8b 0e e8 ?? ?? ?? ?? 8b 76 04 85 f6 75 f2 5e c3"},
+    // mov ecx, [console]; lea eax, [ebp-0x1c]; add esp, 0x18; push ebx; push eax; call RunScriptCommand
+    {"script command read", kScriptCommandRead, "8b 0d ?? ?? ?? ?? 8d 45 e4 83 c4 18 53 50 e8 ad b8 0b 00"},
+    // push ebp; mov ebp, esp; mov eax, [ebp+8]; push ebx; push esi; push edi; mov eax, [eax]; mov ebx, ecx;
+    // sub eax, 0x10; cmp byte [ebp+0xc], 0; je
+    {"run script command", kRunScriptCommand, "55 8b ec 8b 45 08 53 56 57 8b 00 8b d9 83 e8 10 80 7d 0c 00 74 1a"},
+    // mov edi, ecx; mov esi, [edi+0x1c]; mov eax, [esi+8]; shr eax, 4; test al, 1; je; push dword [esi+0x38]
+    {"save task source walk", kSaveSourceWalk, "8b f9 8b 77 1c 8b 46 08 c1 e8 04 a8 01 0f 84 f8 00 00 00 ff 76 38"},
+    // push ebx; call 0x56b9f0; pop ecx; test al, al; je; push ebx; call 0x5c4f12; cmp byte [assert flag], 0; pop ecx;
+    // mov esi, [eax+0x50]; jne; mov eax, [esi+8]; shr eax, 1; test al, 1
+    {"save task source step", kSaveSourceStep,
+     "53 e8 f3 a4 fa ff 59 84 c0 74 52 53 e8 0a 3a 00 00 80 3d ?? ?? ?? ?? 00 59 8b 70 50 75 0d 8b 46 08 d1 e8 a8 01"},
+    // mov ebx, [esi+0x88] (the create settings), right after the "looking at source_res" log call
+    {"save task settings read", kSaveSourceWalk + 0x34, "8b 9e 88 00 00 00 83 c4 18"},
+    // mov ecx, [esp+4]; push type; mov eax, [ecx]; call [eax+4]; mov ecx, eax; call IsA; ret
+    {"settings type check", kIsFromResourceSettings, "8b 4c 24 04 68 ?? ?? ?? ?? 8b 01 ff 50 04 8b c8 e8 ?? ?? ?? ?? c3"},
     // lea eax, [ecx + 0x6c]; ret
     {"widget text getter", kWidgetText, "8d 41 6c c3"},
     // mov ecx, [edi + 0xa8] (IP editbox); call text getter; mov eax, [eax]; sub eax, 0x10; push eax; call

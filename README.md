@@ -52,19 +52,21 @@ no installation or administrator rights.
   and lists the files that differ. Command line: `k2mod fingerprint [--report <file>] [--compare <file>]`.
   Exact definition: [docs/FINGERPRINT.md](docs/FINGERPRINT.md).
 - **Multiplayer autosave (new, not yet tried in a real match):** tick **Autosave multiplayer
-  games**. When you host, the match is saved every 5 minutes as "MP Autosave A" and
-  "MP Autosave B", taking turns. If a game crashes, host again, choose **Load saved game**
-  and pick the newer one. It uses only the game's own script commands, so it changes no
-  game data and does not affect the multiplayer version check. Details:
+  games** (this also turns on the Multiplayer Fixes plugin, which does the saving). When you host,
+  the match is saved every 5 minutes as "MP Autosave A" and "MP Autosave B", taking turns. If a
+  game crashes, host again, choose **Load saved game** and pick the newest. Details:
   [docs/MP_AUTOSAVE.md](docs/MP_AUTOSAVE.md).
 - **Game plugins (new):** the **Game plugins** list turns DLL plugins on and off. They change how
   the game program itself works and are not part of the multiplayer version check. The first one,
-  **Multiplayer Fixes**, is a work in progress: every player keeps a copy of each multiplayer save, so
-  anyone can host the match again if the host's game crashes (not yet tried in a real match). Details:
-  [docs/PLUGINS.md](docs/PLUGINS.md), plan and evidence: [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
+  **Multiplayer Fixes**, is a work in progress, tested between two copies of the game on one PC but
+  not yet in an online match: as host it sends a saved game to players several times faster (only the
+  host needs it); every player keeps a copy of each multiplayer save, so anyone can host the match
+  again if the host's game crashes; and the game's assertion dialogs no longer freeze it into a crash
+  (seen when the host left a lobby). Details: [docs/PLUGINS.md](docs/PLUGINS.md), plan and evidence:
+  [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
 - **What it changes:** only `<game>\Mods\` and `<game>\startup\autoexec_mods.txt`, plus
-  `<game>\user.txt` while multiplayer autosave is on and `<game>\avifil32.dll` (the plugin loader)
-  while a plugin is on. Old startup scripts it offers to turn
+  `<game>\avifil32.dll` (the plugin loader) while a plugin is on. (Versions beta.2 to beta.8 put an
+  autosave block into `<game>\user.txt`; the manager takes it out again.) Old startup scripts it offers to turn
   off are moved to `startup\disabled\`, never deleted. Loose files in
   `Documents\Kohan2\data` override every mod; the manager warns when it finds game files
   there and moves them to a `loose_backup_<date>` folder only when you pack them into a mod.

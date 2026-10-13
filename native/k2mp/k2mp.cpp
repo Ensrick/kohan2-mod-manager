@@ -4,10 +4,13 @@
 // on an unknown k2.exe):
 //   save_copies     every player's game keeps a copy of each multiplayer save (savecopy.h)
 //   fast_transfers  the host sends saved games to players several times faster (fastsend.h)
+//   ignore_asserts  the game's assertion dialogs no longer stop it: a failed check is logged, the game goes on
+//   autosave        the host saves a multiplayer match every few minutes (autosave.h; off unless set)
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
 
+#include "autosave.h"
 #include "fastsend.h"
 #include "game.h"
 #include "hook.h"
@@ -15,11 +18,17 @@
 #include "plugin.h"
 #include "rig.h"
 #include "savecopy.h"
+#include "script.h"
 #include "transfer.h"
-
 
 namespace {
 
+// ignore_asserts: the game's own IgnoreAsserts command, run once the console exists. A failed assertion otherwise
+// shows an Abort/Retry/Ignore dialog on whichever thread hit it; when that thread holds a lock the main thread needs,
+// the main thread gives up waiting and the game crashes ("timeout waiting for mutex"). Seen on the test rig when the
+// host left a player behind in the lobby: all 4 crashes in 18 such runs had exactly one ASSERT, none of the clean runs
+// had one. Ignore is what a player would click.
+bool g_ignoreAssertsPending = false;
 
 }  // namespace
 
@@ -85,6 +94,18 @@ extern "C" __declspec(dllexport) int __cdecl K2Plugin_Start(const K2Host* host) 
     } else
         k2mp::Log("fast transfers: not available for this k2.exe");
 
+    const bool scripts = script::Install(host->exeBase);
+    if (!k2mp::Setting(L"ignore_asserts", true))
+        k2mp::Log("ignore asserts: off in Mods\\k2mp.ini");
+    else if (scripts) {
+        g_ignoreAssertsPending = true;
+        k2mp::Log("ignore asserts: on (the game's IgnoreAsserts command, run once the game's console exists)");
+        ++on;
+    } else
+        k2mp::Log("ignore asserts: not available for this k2.exe");
+
+    if (scripts && autosave::Install(host->exeBase)) ++on;
+
     if (transfer::Install(host->exeBase)) {  // experimental: only with [transfer] keys in Mods\k2mp.ini
         k2mp::Log("transfer settings: configured (applied on the game's thread once its settings table is built)");
         ++on;
@@ -95,7 +116,14 @@ extern "C" __declspec(dllexport) int __cdecl K2Plugin_Start(const K2Host* host) 
 }
 
 // Runs on the game's own thread (see k2plugin.h): every change to game state that is not made inside a hook goes here.
-extern "C" __declspec(dllexport) void __cdecl K2Plugin_Tick() { transfer::Tick(); }
+extern "C" __declspec(dllexport) void __cdecl K2Plugin_Tick() {
+    if (g_ignoreAssertsPending && script::Run(L"IgnoreAsserts")) {
+        g_ignoreAssertsPending = false;
+        k2mp::Log("ignore asserts: IgnoreAsserts queued");
+    }
+    autosave::Tick();
+    transfer::Tick();
+}
 
 BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) DisableThreadLibraryCalls(self);
