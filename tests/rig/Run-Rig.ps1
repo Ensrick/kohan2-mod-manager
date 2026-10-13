@@ -15,6 +15,8 @@
 #   -Scenario Drop       host and client in a match; -DropAfter seconds after the client started, the rig kills the
 #                        -DropWho copy (like a crash). A dropped client is started again and tries to join the host.
 #                        Reports what each game logged about it (timeouts, the connection dialog, refusals).
+#                        -DropHow Quit: the client leaves from the game's menu instead (RequestLeaveGame) at about the
+#                        same time; checks that the host's plugin leaves the match alone.
 #   -Scenario Rejoin     like Drop with the client dropped; the host's plugin saves "MP Resume", takes everyone back to
 #                        the lobby and selects it; the client is started again, joins and gets the save; the host
 #                        launches again. Checks that both are back in a match loaded from "MP Resume".
@@ -34,6 +36,7 @@ param(
     [string] $SaveName = 'Rig Test',
     [int] $AutosaveMinutes = 1,            # Autosave: the loop's interval
     [ValidateSet('Client', 'Host')] [string] $DropWho = 'Client',  # Drop: which copy the rig kills
+    [ValidateSet('Kill', 'Quit')] [string] $DropHow = 'Kill',      # Drop: Quit = the client leaves from the menu
     [int] $DropAfter = 240,
     [int] $RelaunchAfter = 300,            # Rejoin: seconds after its second launch try before the host launches again
     [ValidateRange(1, 2)] [int] $Clients = 1,  # a second client (RigClient2, its own Documents) for three-player runs                # Drop: seconds after the client starts (its match runs from about 120)
@@ -195,11 +198,13 @@ $(if ($Scenario -eq 'Rejoin') { "Wait $RelaunchAfter`nEcho rig: host launching a
 Echo rig: host end
 ReallyQuit
 "@
+    # About 70 s of the client's script go by before the join is done; a quitting client leaves at -DropAfter.
+    $clientStay = if ($Scenario -eq 'Drop' -and $DropHow -eq 'Quit') { "Wait $([math]::Max(30, $DropAfter - 75))`nEcho rig: client quitting`nRequestLeaveGame`nWait 20" } else { 'Wait 600' }
     $clientScript = @"
 Wait 45
 $join
 Echo rig: client in the lobby
-Wait 600
+$clientStay
 Echo rig: client end
 ReallyQuit
 "@
@@ -375,13 +380,17 @@ try {
                 if ($want -gt 0 -and $size -ge $want) { $complete = Get-Date; "transfer: complete after $([math]::Round(($complete - $firstSeen).TotalSeconds, 1)) s" }
             }
         }
-        if ($Scenario -in 'Drop', 'Rejoin' -and -not $dropped -and ((Get-Date) - $t0).TotalSeconds -ge $DropAfter) {
+        if ($Scenario -eq 'Drop' -and $DropHow -eq 'Quit' -and -not $dropped -and ((Get-Date) - $t0).TotalSeconds -ge $DropAfter) {
+            $dropped = Get-Date
+            "drop: the client is quitting from the menu about now"
+        }
+        if ($Scenario -in 'Drop', 'Rejoin' -and $DropHow -eq 'Kill' -and -not $dropped -and ((Get-Date) - $t0).TotalSeconds -ge $DropAfter) {
             $victim = if ($DropWho -eq 'Host' -and $Scenario -eq 'Drop') { $hostPid } else { $clientPid }
             Stop-Process -Id $victim -Force -ErrorAction SilentlyContinue
             $dropped = Get-Date
             "drop: killed the $($DropWho.ToLower()) (process $victim) $([math]::Round(($dropped - $t0).TotalSeconds)) s after the client started"
         }
-        if (($Scenario -eq 'Rejoin' -or ($Scenario -eq 'Drop' -and $DropWho -eq 'Client')) -and $dropped -and -not $rejoinPid -and ((Get-Date) - $dropped).TotalSeconds -ge 20) {
+        if (($Scenario -eq 'Rejoin' -or ($Scenario -eq 'Drop' -and $DropWho -eq 'Client' -and $DropHow -eq 'Kill')) -and $dropped -and -not $rejoinPid -and ((Get-Date) - $dropped).TotalSeconds -ge 20) {
             "# rig rejoining client (written by tests/rig/Run-Rig.ps1)`r`n$($rejoinScript.Replace('__NICK__', 'RigClient'))" | Set-Content (Join-Path $mods 'rig\rejoin.txt') -Encoding ascii
             $known = Log-Names
             $rejoinPid = & $start -Game $Game -Arguments '+Exec Mods/rig/rejoin.txt' -Env @{ K2MP_RIG_JOIN = "127.0.0.1:$Port"; K2_RIG_DOCUMENTS = $clientDocs }
@@ -475,6 +484,14 @@ if ($Scenario -eq 'SaveCopy') {
         $checks['the dropped client is back in a match from "MP Resume"'] = $rjText.Contains('Loading File: <Save/MP Resume ') -and $rjText.Contains('Waiting on Other Players')
     }
     # pause on drop: the host's plugin (after a host drop: the client's, which took over) saved "MP Resume"
+    if ($Scenario -eq 'Drop' -and $DropHow -eq 'Quit') {
+        $hostPlugin = Join-Path $mods 'plugins.log'
+        $checks['the host''s plugin saw a quit, not a drop'] = [bool](Select-String -Path $hostPlugin -Pattern 'quit the match on purpose' -SimpleMatch -Quiet)
+        $checks['the host''s plugin did not save or pause'] = -not (Select-String -Path $hostPlugin -Pattern 'saving "Save/MP Resume' -SimpleMatch -Quiet)
+        $hostText = if ($hostLogNow) { Get-Content $hostLogNow.FullName -Raw } else { '' }
+        $matchAt = if ($hostText) { $hostText.LastIndexOf('ChangeToState(2,') } else { -1 }
+        $checks['the host''s game stayed in the match'] = $matchAt -ge 0 -and $hostText.IndexOf('SetNewState(1)', $matchAt) -lt 0
+    } else {
     # pause on drop: the host's plugin (after a host drop: the plugin of the client that took over) saved "MP Resume"
     $survivors = if ($DropWho -eq 'Host') {
         @([pscustomobject]@{ Log = 'plugins.2.log'; Saves = $clientSaves }, [pscustomobject]@{ Log = 'plugins.3.log'; Saves = $client2Saves })
@@ -487,6 +504,7 @@ if ($Scenario -eq 'SaveCopy') {
         $copyDir = if ($DropWho -eq 'Host') { @($clientSaves, $client2Saves) | Where-Object { $_ -ne $saver.Saves } } else { $client2Saves }
         $copy = Get-ChildItem $copyDir -Filter 'MP Resume * (copy).RSG' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt $dropped } | Select-Object -First 1
         $checks['the other remaining player wrote "MP Resume (copy)"'] = [bool]$copy
+    }
     }
 } elseif ($Scenario -eq 'HostLeaves') {
     $clientLogNow = Final-Log $clientLog
