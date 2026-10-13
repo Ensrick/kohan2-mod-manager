@@ -206,8 +206,14 @@ step because that client already had an older file of the same name and nobody c
 is why the name now changes per drop.
 
 After a host crash, the player who takes over saves and pauses but stays in the match (the lost host would have to
-find the new host's lobby, which is untested). Not tested: Steam (whether a Steam-hosted lobby is listed and
-joinable again after step 3), more than two players.
+find the new host's lobby, which is untested). Not tested: Steam, more than two players.
+
+Steam, from the code (static analysis, not a test): the host keeps its Steam lobby for as long as it hosts a
+networked session in any state but 0 (`KKC_SteamLobbyMgr` sync 0x47cde9: Host when there is none, Leave only when
+the session ends), and republishes the lobby data every 3 s (0x47d320), including a "state" key that says "in
+progress" only while the session is in state 2 or 4 (0x4778e3). So after step 3 the same Steam lobby shows the game
+as open again within 3 s, and a join through it reaches `SerializeConnect`, which accepts in state 1. The browser's
+"playing games" filter (`NetworkFilterPlayingGames`) only matters while the match runs.
 
 ## Game bug: a player still in the lobby crashes when the host leaves
 

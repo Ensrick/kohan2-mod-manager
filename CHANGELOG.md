@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [0.1.0-beta.11] - unreleased
+## [0.1.0-beta.11] - 2026-10-12
 
 ### Added
 - Multiplayer Fixes 0.2.0-dev.12, **rejoin after a drop**: after saving and pausing (below), the host's game takes
@@ -16,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   running match (crash, lost connection or quitting), the host saves the match as "MP Resume" and pauses it for
   everyone; after a host crash the player who takes over does it. Before, the game gave the leaver's kingdom to the
   AI and played on. Test rig: both cases saved and paused.
+- `tests\Read-SessionLogs.ps1 <folder>`: the lines that matter from the logs testers send (plugins.log, log-N.log).
 - Test rig: `-Scenario Drop` (`-DropWho Client|Host`, `-DropAfter`): kills one copy mid-match, starts a dropped
   client again and has it join; `-Clients 2` for three copies (host and two clients); the rig stops its own copies
   if they are still running at the end.
