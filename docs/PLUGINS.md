@@ -83,11 +83,16 @@ save_copies = 1      ; every player's game keeps "<save> (copy).RSG" of each mul
 fast_transfers = 1   ; as host, send saved games to players several times faster (only the host needs it)
 ignore_asserts = 1   ; the game's IgnoreAsserts: a failed check is logged instead of freezing the game
 autosave = 0         ; as host, save the match every few minutes (the manager's autosave box sets it)
-pause_on_drop = 1    ; when a player leaves a running match, the host saves "MP Resume" and pauses
+pause_on_drop = 1    ; when a player leaves a running match: save "MP Resume <time>", pause, back to the lobby
 
 [fast_transfers]
 packets_per_second = 60   ; 11..200; the game's own pace is 10
 
 [autosave]
 minutes = 5               ; 1..120
+
+[pause_on_drop]
+pause = 1                 ; 0: save only, keep playing
+lobby = 1                 ; 0: stay in the match (no return to the lobby)
+vote_after = 20           ; seconds a silent connection may stay down before voting to drop that player; 0: never
 ```

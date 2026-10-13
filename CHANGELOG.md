@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [0.1.0-beta.11] - unreleased
 
 ### Added
+- Multiplayer Fixes 0.2.0-dev.12, **rejoin after a drop**: after saving and pausing (below), the host's game takes
+  everyone back to the lobby, still connected, with the game's own "End Mission", and selects the save there; the
+  player who dropped joins the lobby, gets the save and the host launches. Players whose connection goes silent are
+  voted out after 20 s (`vote_after`) with the game's own vote, since otherwise the game waits for that vote
+  forever. The save is named "MP Resume <date> <time>" so no player can have an older file of that name (which
+  makes the game ask to overwrite, and Cancel leaves the lobby). Test rig: the dropped client was back in the match
+  from the save. Not tried over Steam or with more than two players.
 - Multiplayer Fixes 0.2.0-dev.7, **pause on drop** (`pause_on_drop`, on by default): when a player leaves a
   running match (crash, lost connection or quitting), the host saves the match as "MP Resume" and pauses it for
   everyone; after a host crash the player who takes over does it. Before, the game gave the leaver's kingdom to the

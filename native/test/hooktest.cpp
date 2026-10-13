@@ -387,6 +387,53 @@ void TestDropGuard() {
     Put<int>(session, game::kSessionState, 4);
     Put<void*>(a, game::kAdminServer, session);
     Check(!dropguard::HostOfRunningMatch(a, session), "drop: never on a PC that is not the host");
+
+    // the lobby step's End Mission: original host, running networked match, no countdown, multiplayer game type
+    int world = 0;
+    auto lobbyReady = [&] {
+        memset(a, 0, sizeof(a));
+        memset(session, 0, sizeof(session));
+        Put<void*>(a, game::kAdminServer, a);
+        Put<int>(session, game::kSessionState, 2);
+        session[game::kSessionNetworked] = 1;
+    };
+    lobbyReady();
+    Check(dropguard::CanEndMission(a, session, &world, game::kGameTypeMultiplayer), "lobby: the host of a running multiplayer match");
+    Check(!dropguard::CanEndMission(a, session, &world, 0), "lobby: never in a campaign (game type 0)");
+    Check(!dropguard::CanEndMission(a, session, nullptr, game::kGameTypeMultiplayer), "lobby: never without a world");
+    a[game::kAdminBackupMode] = 1;
+    Check(!dropguard::CanEndMission(a, session, &world, game::kGameTypeMultiplayer), "lobby: never from the player who took over (backup mode)");
+    lobbyReady();
+    session[game::kSessionNetworked] = 0;
+    Check(!dropguard::CanEndMission(a, session, &world, game::kGameTypeMultiplayer), "lobby: never in a session that is not networked");
+    lobbyReady();
+    Put<int>(session, game::kSessionCountdown, 3);
+    Check(!dropguard::CanEndMission(a, session, &world, game::kGameTypeMultiplayer), "lobby: never during a launch countdown");
+    lobbyReady();
+    Put<int>(session, game::kSessionState, 4);
+    Check(!dropguard::CanEndMission(a, session, &world, game::kGameTypeMultiplayer), "lobby: never while a film plays (state 4)");
+
+    // the vote: a connection of the net node whose admin connection is down (timed out)
+    alignas(16) static uint8_t node[0x100], net1[0x100], net2[0x100], conn1[0x100], conn2[0x100];
+    void* list2[2] = {net2, nullptr};
+    void* list1[2] = {net1, list2};
+    memset(node, 0, sizeof(node));
+    memset(net1, 0, sizeof(net1));
+    memset(net2, 0, sizeof(net2));
+    memset(conn1, 0, sizeof(conn1));
+    memset(conn2, 0, sizeof(conn2));
+    Put<void*>(node, game::kNetNodeConnections, list1);
+    Put<void*>(net1, game::kNetConnAdminConn, conn1);
+    Put<void*>(net2, game::kNetConnAdminConn, conn2);
+    conn1[game::kConnUp] = 1;
+    conn2[game::kConnUp] = 1;
+    Check(!dropguard::ConnectionDown(node), "vote: every connection up");
+    conn2[game::kConnUp] = 0;
+    Check(dropguard::ConnectionDown(node), "vote: the second of two connections timed out");
+    Put<void*>(net2, game::kNetConnAdminConn, nullptr);
+    Check(!dropguard::ConnectionDown(node), "vote: a net connection without an admin connection does not count");
+    Put<void*>(node, game::kNetNodeConnections, nullptr);
+    Check(!dropguard::ConnectionDown(node) && !dropguard::ConnectionDown(nullptr), "vote: no connections, no node");
 }
 
 }  // namespace

@@ -111,7 +111,8 @@ extern "C" __declspec(dllexport) int __cdecl K2Plugin_Start(const K2Host* host) 
     if (!k2mp::Setting(L"pause_on_drop", true))
         k2mp::Log("pause on drop: off in Mods\\k2mp.ini");
     else if (scripts && dropguard::Install(host->exeBase)) {
-        k2mp::Log("pause on drop: on (when a player leaves a running match, the host saves \"MP Resume\" and pauses)");
+        k2mp::Log("pause on drop: on (when a player leaves a running match, the host saves \"MP Resume\" and pauses%s)",
+                  dropguard::LobbyStep() ? ", then takes everyone back to the lobby with it" : "");
         ++on;
     } else
         k2mp::Log("pause on drop: not available for this k2.exe");

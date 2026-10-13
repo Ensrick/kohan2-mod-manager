@@ -91,6 +91,7 @@ constexpr int kFileStateSending = 2;
 constexpr uint32_t kConnUp = 0x98;           // byte; GetWantedPacketType sends nothing while it is 0
 constexpr uint32_t kConnFlag99 = 0x99;       // byte; when set the host sends packet type 11 instead
 constexpr uint32_t kConnNetConn = 0x42c;     // its TGC_NetConn
+constexpr uint32_t kNetConnAdminConn = 0xa0;  // TGC_NetConn -> its TGC_AdminConn (`mov eax, [ecx+0xa0]`, 0x55bfb1)
 // TGC_NetConn / TGC_NetNode
 constexpr uint32_t kNetConnLastSend = 0x90;  // float: network clock when it last sent a packet
 constexpr uint32_t kNetNodeClock = 0x50;     // float: network clock, seconds
@@ -100,6 +101,31 @@ constexpr uint32_t kNetNodeClock = 0x50;     // float: network clock, seconds
 // running match the game then gives the leaver's kingdom to the AI and plays on.
 constexpr uint32_t kPlayerLeave = 0x14b2df;
 constexpr uint32_t kPlayerLeaveDecreeCall = 0x156aeb;
+
+// Back to the lobby (static analysis 2026-10-12, scratch notes "return to staging"). The host's in-game "End Mission"
+// / "Abort Mission" (0x4c3e7e, cdecl, no arguments) takes every connected PC to staging (session state 1) without
+// disconnecting anyone: KKC_SetNewStateOrder 1 (issued at 0x4c409f), KKC_SetMapTypeOrder 4 "use existing" (0x4c40c6
+// -> 0x4851bc) and KKC_LaunchOrder (0x4c40d0 -> 0x4850bb). It reads the game type from the application object it
+// loads with `mov ecx, imm32` at + 0xd: [[app + 0xfc] + 0xc], 0 campaign, 1 multiplayer [inferred].
+constexpr uint32_t kEndMission = 0x0c3e7e;
+constexpr uint32_t kEndMissionSetMapTypeCall = 0x0c40c6;
+constexpr uint32_t kSetMapTypeIssue = 0x0851bc;
+constexpr uint32_t kEndMissionLaunchCall = 0x0c40d0;
+constexpr uint32_t kLaunchIssue = 0x0850bb;
+constexpr uint32_t kAppGameTypeObject = 0xfc;
+constexpr uint32_t kGameTypeValue = 0x0c;
+constexpr int kGameTypeMultiplayer = 1;
+// KKC_HostSetLoadSavedGameOrder: {vtable, engine string file name}. ctor 0x52181c thiscall(this, const string*),
+// ret 4 (adds a reference); Issue 0x52246e thiscall(this, int target), ret 4, target 0 = the host. In staging the
+// host's game then checksums the file and sets it for everyone (KKC_SetSessionLoadSavedGameOrder): what picking a
+// save in the lobby's "Load saved game" does.
+constexpr uint32_t kHostSetLoadSavedGameCtor = 0x12181c;
+constexpr uint32_t kHostSetLoadSavedGameIssue = 0x12246e;
+// More of KKC_Session.
+constexpr uint32_t kSessionNetworked = 0x100;  // byte: a multiplayer session
+constexpr uint32_t kSessionCountdown = 0x128;  // int: > 0 while the launch countdown runs
+constexpr int kSessionStaging = 1;
+constexpr uint32_t kAdminHostKind = 0x300;     // int; 2 makes the host's ScoringExit leave the session (logged)
 
 // TGC_NetNode::OnReceiveError (0x55b5d8): `mov eax, [session]; add esp, 0x14; test eax, eax; je; cmp dword [eax+0xf0],
 // 0`. Every function the game calls with ECX = [session] lies in KKC_Session's code (0x561000-0x570000).
@@ -206,10 +232,28 @@ inline constexpr Signature kSignatures[] = {
     // cmp dword [edi+0x3c], 2; jne; push ebx; lea ebx, [edi+0x3b4] (the file sender)
     {"TGC_AdminConn::UpdateFileTransferStatus", kUpdateFileTransferStatus + 0x10,
      "83 7f 3c 02 0f 85 bb 00 00 00 53 8d 9f b4 03 00 00"},
+    // TGC_NetConn 0x55bfb1: mov eax, [ecx+0xa0] (its admin connection); push edi; mov edi, [esp+8]; test eax, eax
+    {"net connection's admin connection", 0x15bfb1, "8b 81 a0 00 00 00 57 8b 7c 24 08 85"},
+    // CSDKickLaggingPlayers <state>: votes the opposite of <state> (neg; sbb; inc) through 0x54a5d0
+    {"kick lagging players vote", 0x0bc51c, "55 8b ec 8b 4d 08 e8 fa be 13 00 8b 0d ?? ?? ?? ?? f7 d8 1a c0 fe c0 88 45 08 ff 75 08 e8 92 e0 08 00"},
     // push dword [ecx+8]; push dword [ecx+4]; mov ecx, [admin node]; call PlayerLeave; ret
     {"player leave decree", kPlayerLeaveDecreeCall - 0xc, "ff 71 08 ff 71 04 8b 0d ?? ?? ?? ?? e8 ef 47 ff ff c3"},
     // push esi; mov esi, [esp+8] (player); push edi; mov edi, ecx; test esi, esi; jne; push "...invalid player"
     {"TGC_AdminNode::PlayerLeave", kPlayerLeave, "56 8b 74 24 08 57 8b f9 85 f6 75 23 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? 68 bd 0c 00 00"},
+    // mov eax, SEH; call; sub esp, 0x6c; mov ecx, app; push ebx/esi/edi; push 6; pop edi; call 0x53bd11 (game type
+    // object); push 2; pop ebx; cmp dword [eax+0xc], 0
+    {"End Mission", kEndMission,
+     "b8 ?? ?? ?? ?? e8 ?? ?? ?? ?? 83 ec 6c b9 ?? ?? ?? ?? 53 56 57 6a 06 5f e8 76 7e 07 00 6a 02 5b 83 78 0c 00"},
+    // mov eax, [ecx+0xfc]; ret
+    {"game type object", 0x13bd11, "8b 81 fc 00 00 00 c3"},
+    // push ebp; mov ebp, esp; push ecx; mov eax, [ebp+8]; push esi; push edi; mov edi, ecx; mov [ebp-4], edi;
+    // mov dword [edi], vtable
+    {"HostSetLoadSavedGame ctor", kHostSetLoadSavedGameCtor, "55 8b ec 51 8b 45 08 56 57 8b f9 89 7d fc c7 07 ?? ?? ?? ??"},
+    // mov eax, SEH; call; push ecx; push ebx; push esi; mov ebx, ecx; mov dword [ebp-0x10], 0
+    {"HostSetLoadSavedGame issue", kHostSetLoadSavedGameIssue,
+     "b8 ?? ?? ?? ?? e8 ?? ?? ?? ?? 51 53 56 8b d9 c7 45 f0 00 00 00 00"},
+    // KKC_Session::SetMapType: cmp dword [esi+0x128], 0; jle (no change while the countdown runs)
+    {"session countdown read", 0x162765, "83 be 28 01 00 00 00 7e 2c"},
     // mov eax, [session]; add esp, 0x14; test eax, eax; je; cmp dword [eax+0xf0], 0; je
     {"session read", kSessionRead, "a1 ?? ?? ?? ?? 83 c4 14 85 c0 74 4d 83 b8 f0 00 00 00 00 74 44"},
     // push esi; mov esi, [ecx+0x70]; jmp; mov ecx, [esi]; call; mov esi, [esi+4]; test esi, esi; jne; pop esi; ret
@@ -250,6 +294,8 @@ inline constexpr CallSite kCallSites[] = {
     {"GameSave host call -> CreateSaveGameTask", kGameSaveHostCall, kCreateSaveGameTask},
     {"packet writer -> GetWantedPacketType", kWantedTypeWriteCall, kGetWantedPacketType},
     {"player leave decree -> PlayerLeave", kPlayerLeaveDecreeCall, kPlayerLeave},
+    {"End Mission -> SetMapType issue", kEndMissionSetMapTypeCall, kSetMapTypeIssue},
+    {"End Mission -> Launch issue", kEndMissionLaunchCall, kLaunchIssue},
     {"send scheduler -> GetWantedPacketType", kWantedTypeScheduleCall, kGetWantedPacketType},
     {"join direct IP read -> widget text", kJoinDirectIpRead, kWidgetText},
     {"join direct port read -> widget text", kJoinDirectPortRead, kWidgetText},

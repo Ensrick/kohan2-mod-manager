@@ -82,7 +82,7 @@ needs the sync log of a second player from the same match.
 | 5 | **Host autosave** (`autosave`): the host saves the match every few minutes, so a crash loses minutes at most. Replaces the script loop of manager beta.2 to beta.8, which could crash the game ([MP_AUTOSAVE.md](MP_AUTOSAVE.md)). | built, k2mp 0.2.0-dev.5: saves on the test rig; not yet in an online match |
 | 5b | **No assertion dialogs** (`ignore_asserts`): the game's own `IgnoreAsserts`, so a failed check no longer freezes the game until it crashes (below). | built, k2mp 0.2.0-dev.5 |
 | 6 | **Pause on drop** (`pause_on_drop`): when a player leaves a running match, the host saves "MP Resume" and pauses it for everyone (after a host crash: the player who takes over). | built, k2mp 0.2.0-dev.7: both cases on the test rig (below) |
-| 6b | **Rejoin a running match** after a drop: back to the lobby with "MP Resume" selected, the dropped player joins, everyone relaunches. | in progress |
+| 6b | **Rejoin after a drop** (`pause_on_drop`, lobby step): the host's game saves the moment, takes everyone back to the lobby still connected, and selects that save; the dropped player joins the lobby, gets the save, the host launches. Silent drops are voted out after 20 s. | built, k2mp 0.2.0-dev.12: on the test rig (LAN, two copies); Steam untested |
 | 7 | **Desync cause** of the early desyncs. | needs a second player's sync log |
 
 ## Save copies: first real match (test rig, 2026-10-12)
@@ -164,12 +164,50 @@ and can be set in `Mods\k2mp.ini`. Larger packets (the receivers take up to 4,09
   `GameSave "Save/MP Resume.RSG"` and `GamePause 1` on the game's thread: "Game Saved: 'Save/MP Resume.RSG'"
   (226 KB) and "RigHost has paused the game", also from the player who had just taken over as host.
 
+Two ways a drop shows up, both seen on the rig: the dead copy's socket is reset (`Error on receive: 10054`) and the
+host removes the player at once (`PlayerLeave`); or the connection just goes silent, the host times it out, enters
+backup mode and waits on its connection status screen for the players to vote the missing player out
+(`CSDKickLaggingPlayers`, a backup request through 0x54a5d0), indefinitely. A crash over Steam will usually look
+like the second.
+
 The game has no way to add a player to a running match (the only mid-game player creation,
 `KKC_MidgameCreateAIsAndSessionPlayersOrder`, makes AI players). It does have the host's "End Mission" / "Abort
 Mission" (0x4c3e7e), which takes every connected PC back to the lobby (`KKC_SetNewStateOrder` 1, map type 4,
 `KKC_LaunchOrder`) without disconnecting anyone, and lobbies accept joins. That is the way back in for a dropped
 player: the match is saved, everyone returns to the lobby with the save selected, the dropped player joins, and the
 host launches again.
+
+## Rejoin after a drop (k2mp 0.2.0-dev.12, test rig 2026-10-12)
+
+What `pause_on_drop` does, on the host's game, when a player leaves a running match:
+
+1. **Vote** (every PC with the plugin): if the game sits in backup mode with a connection down for 20 s
+   (`vote_after`), it casts the game's own vote to drop that player (`CSDKickLaggingPlayers 0`; the argument is the
+   vote shown, the command votes the opposite). The game then removes the player as usual.
+2. **Save and pause**: on the leave, the host's plugin runs `GameSave "Save/MP Resume <date> <time>.RSG"` and
+   `GamePause 1`. A new name each time: a player who already has a file of the selected name with other contents is
+   asked "A different version of this map exists - overwrite it?", and Cancel there leaves the lobby.
+3. **Back to the lobby**: once the save is written (the file stops growing), the host's plugin calls the game's own
+   "End Mission" (0x4c3e7e), only when this PC is the original host of a running, networked multiplayer match with
+   no launch countdown. Every connected PC goes to the lobby (state 1) without disconnecting; they land on the score
+   screen first.
+4. **Select the save**: 1.5 s after arriving (an order sent in the same instant as the switch is refused "due to
+   versioning"), the plugin sends `KKC_HostSetLoadSavedGameOrder` with the save's name, what the lobby's "Load saved
+   game" sends, and checks the session's file until it matches (resending every 2 s, at most 5 times). Then it takes
+   the host's own screen from the score screen to the lobby page (`ScoringExit`, which only leaves the session when
+   the admin node's +0x300 is 2; the rig's host had 0).
+5. The dropped player starts the game and joins the lobby (lobbies accept joins), gets the save (fast transfers),
+   and the host clicks Launch: everyone continues from the moment of the drop.
+
+Rig run (`Run-Rig.ps1 -Scenario Rejoin`, two copies, client killed two minutes into a match): the host saved, went
+to the lobby and selected the save on the first send; the restarted client joined, received the 210 KB save in
+13 s; the host launched; the client was back in a match loaded from the save. A second run failed only at the last
+step because that client already had an older file of the same name and nobody clicked the overwrite prompt, which
+is why the name now changes per drop.
+
+After a host crash, the player who takes over saves and pauses but stays in the match (the lost host would have to
+find the new host's lobby, which is untested). Not tested: Steam (whether a Steam-hosted lobby is listed and
+joinable again after step 3), more than two players.
 
 ## Game bug: a player still in the lobby crashes when the host leaves
 
