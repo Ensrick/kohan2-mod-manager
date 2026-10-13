@@ -181,6 +181,10 @@ host launches again.
 
 What `pause_on_drop` does, on the host's game, when a player leaves a running match:
 
+0. **Quit or drop?** A player who quits on purpose and a crash that resets the connection both reach the host as
+   a leave with reason 5 (`SerializeClientDisconnectRequest` 0x5517b6, `OnReceiveError` 0x55b686; a vote-out goes
+   through 0x54a93a, a kick has reason 11). A deliberate quit is preceded by the player's request to leave, so a
+   leave within 3 s of such a request is left alone (k2mp 0.2.0-dev.13), as the game does without the plugin.
 1. **Vote** (every PC with the plugin): if the game sits in backup mode with a connection down for 20 s
    (`vote_after`), it casts the game's own vote to drop that player (`CSDKickLaggingPlayers 0`; the argument is the
    vote shown, the command votes the opposite). The game then removes the player as usual.

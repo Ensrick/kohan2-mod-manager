@@ -14,6 +14,7 @@ namespace dropguard {
 namespace {
 
 using PlayerLeaveFn = void(__fastcall*)(void* admin, void* edx, void* player, int reason);
+using DisconnectRequestFn = void(__fastcall*)(void* conn, void* edx, void* stream, int sequence);
 using EndMissionFn = void(__cdecl*)();
 using StringCtorFn = void*(__thiscall*)(void* self, const wchar_t* text);
 using StringReleaseFn = void(__thiscall*)(void* header);
@@ -35,6 +36,8 @@ std::wstring NewResumeName() {
 }
 
 PlayerLeaveFn g_original = nullptr;
+DisconnectRequestFn g_originalDisconnectRequest = nullptr;
+volatile LONG g_quitAt = 0;  // GetTickCount() of the last disconnect request a player sent (network thread)
 uintptr_t g_base = 0;
 uintptr_t g_adminGlobal = 0;  // addresses of the game's pointer variables; 0 = off
 uintptr_t g_sessionGlobal = 0;
@@ -86,6 +89,19 @@ void __fastcall OnPlayerLeave(void* admin, void* edx, void* player, int reason) 
         InterlockedExchange(&g_lastReason, reason);
         InterlockedIncrement(&g_pending);
     }
+}
+
+// The packet reader's call, ECX = the connection, (stream, sequence) on the stack, callee pops 8: a player asked to
+// leave. The game's code runs unchanged; the time is noted so the leave it issues is not taken for a drop.
+void __fastcall OnDisconnectRequest(void* conn, void* edx, void* stream, int sequence) {
+    InterlockedExchange(&g_quitAt, static_cast<LONG>(GetTickCount()));
+    g_originalDisconnectRequest(conn, edx, stream, sequence);
+}
+
+// The latest leave followed a player's own request to leave (within 3 s).
+bool LeftOnPurpose() {
+    const LONG at = g_quitAt;
+    return at && static_cast<DWORD>(GetTickCount() - static_cast<DWORD>(at)) < 3000;
 }
 
 struct Snapshot {
@@ -180,6 +196,10 @@ void OnLeave() {
     const LONG reason = g_lastReason;
     Snapshot s;
     if (!Read(&s) || !HostOfRunningMatch(s.admin, s.session)) return;  // not the host, or a leave from the lobby
+    if (LeftOnPurpose()) {
+        k2mp::Log("pause on drop: a player quit the match on purpose (reason %ld); nothing to do", reason);
+        return;
+    }
     if (g_step != Step::Idle) {
         k2mp::Log("pause on drop: %ld more player(s) left (reason %ld); already handling a leave", leaves, reason);
         return;
@@ -282,6 +302,14 @@ bool Install(uintptr_t exeBase) {
         g_app = *reinterpret_cast<const uint32_t*>(exeBase + game::kEndMission + 0xe);  // `mov ecx, app` operand
     else if (g_lobby)
         k2mp::Log("pause on drop: the lobby step is not available for this k2.exe (save and pause only)");
+    // A player's own request to leave: optional; without it every leave counts as a drop.
+    const char* const quitNeeds[] = {"TGC_AdminConn::SerializeClientDisconnectRequest", "client disconnect request call"};
+    const uintptr_t request = exeBase + game::kClientDisconnectRequest;
+    g_originalDisconnectRequest = reinterpret_cast<DisconnectRequestFn>(request);
+    if (!hook::SignaturesMatch(exeBase, quitNeeds, 2) ||
+        !hook::RedirectCall(exeBase + game::kClientDisconnectRequestCall, request,
+                            reinterpret_cast<void*>(&OnDisconnectRequest)))
+        k2mp::Log("pause on drop: cannot tell quitting from dropping in this k2.exe; every leave counts as a drop");
     const uintptr_t original = exeBase + game::kPlayerLeave;
     g_original = reinterpret_cast<PlayerLeaveFn>(original);
     return hook::RedirectCall(exeBase + game::kPlayerLeaveDecreeCall, original,
@@ -390,6 +418,12 @@ void Tick() {
 
 namespace testing {
 void* Hook() { return reinterpret_cast<void*>(&OnPlayerLeave); }
+void* DisconnectRequestHook() { return reinterpret_cast<void*>(&OnDisconnectRequest); }
+void RouteDisconnectRequest(uintptr_t original) {
+    g_originalDisconnectRequest = reinterpret_cast<DisconnectRequestFn>(original);
+    g_quitAt = 0;
+}
+bool LeftOnPurposeNow() { return LeftOnPurpose(); }
 void Route(uintptr_t original) {
     g_original = reinterpret_cast<PlayerLeaveFn>(original);
     g_pending = 0;

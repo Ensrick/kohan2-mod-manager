@@ -362,6 +362,17 @@ void __fastcall FakePlayerLeave(void* admin, void*, void* player, int reason) {
     g_leaveReason = reason;
 }
 
+volatile int g_quitCalls = 0;
+void* volatile g_quitConn = nullptr;
+void* volatile g_quitStream = nullptr;
+volatile int g_quitSequence = 0;
+void __fastcall FakeDisconnectRequest(void* conn, void*, void* stream, int sequence) {
+    ++g_quitCalls;
+    g_quitConn = conn;
+    g_quitStream = stream;
+    g_quitSequence = sequence;
+}
+
 void TestDropGuard() {
     using Fn = void(__fastcall*)(void*, void*, void*, int);
     const auto hookFn = reinterpret_cast<Fn>(dropguard::testing::Hook());
@@ -434,6 +445,17 @@ void TestDropGuard() {
     Check(!dropguard::ConnectionDown(node), "vote: a net connection without an admin connection does not count");
     Put<void*>(node, game::kNetNodeConnections, nullptr);
     Check(!dropguard::ConnectionDown(node) && !dropguard::ConnectionDown(nullptr), "vote: no connections, no node");
+
+    // quitting on purpose: the disconnect request passes through unchanged and marks the next leave as a quit
+    using QuitFn = void(__fastcall*)(void*, void*, void*, int);
+    const auto quitHook = reinterpret_cast<QuitFn>(dropguard::testing::DisconnectRequestHook());
+    dropguard::testing::RouteDisconnectRequest(reinterpret_cast<uintptr_t>(&FakeDisconnectRequest));
+    Check(!dropguard::testing::LeftOnPurposeNow(), "quit: no request seen, a leave is a drop");
+    int conn = 0, stream = 0;
+    quitHook(&conn, nullptr, &stream, 42);
+    Check(g_quitCalls == 1 && g_quitConn == &conn && g_quitStream == &stream && g_quitSequence == 42,
+          "quit: the game's SerializeClientDisconnectRequest gets the same connection, stream and sequence");
+    Check(dropguard::testing::LeftOnPurposeNow(), "quit: a leave right after the request is a quit");
 }
 
 }  // namespace

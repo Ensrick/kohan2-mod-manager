@@ -101,6 +101,12 @@ constexpr uint32_t kNetNodeClock = 0x50;     // float: network clock, seconds
 // running match the game then gives the leaver's kingdom to the AI and plays on.
 constexpr uint32_t kPlayerLeave = 0x14b2df;
 constexpr uint32_t kPlayerLeaveDecreeCall = 0x156aeb;
+// A player who quits on purpose: their game asks the host to let them go, and the host's
+// TGC_AdminConn::SerializeClientDisconnectRequest (0x55171a, thiscall(conn, stream, sequence), ret 8, called by the
+// packet reader at 0x54ff04) issues the leave with reason 5, the same reason as a connection reset by a crash
+// (TGC_NetNode::OnReceiveError 0x55b5d8). The request is what tells them apart.
+constexpr uint32_t kClientDisconnectRequest = 0x15171a;
+constexpr uint32_t kClientDisconnectRequestCall = 0x14ff04;
 
 // Back to the lobby (static analysis 2026-10-12, scratch notes "return to staging"). The host's in-game "End Mission"
 // / "Abort Mission" (0x4c3e7e, cdecl, no arguments) takes every connected PC to staging (session state 1) without
@@ -236,6 +242,11 @@ inline constexpr Signature kSignatures[] = {
     {"net connection's admin connection", 0x15bfb1, "8b 81 a0 00 00 00 57 8b 7c 24 08 85"},
     // CSDKickLaggingPlayers <state>: votes the opposite of <state> (neg; sbb; inc) through 0x54a5d0
     {"kick lagging players vote", 0x0bc51c, "55 8b ec 8b 4d 08 e8 fa be 13 00 8b 0d ?? ?? ?? ?? f7 d8 1a c0 fe c0 88 45 08 ff 75 08 e8 92 e0 08 00"},
+    // push ebp; mov ebp, esp; mov eax, [admin node]; sub esp, 0xc; push esi; mov esi, ecx; cmp eax, [eax+0x2e8]; je
+    {"TGC_AdminConn::SerializeClientDisconnectRequest", kClientDisconnectRequest,
+     "55 8b ec a1 ?? ?? ?? ?? 83 ec 0c 56 8b f1 3b 80 e8 02 00 00 74 23"},
+    // push dword [ebp+0xc]; mov ecx, edi; push esi; call SerializeClientDisconnectRequest; pop esi
+    {"client disconnect request call", kClientDisconnectRequestCall - 6, "ff 75 0c 8b cf 56 e8 11 18 00 00 5e"},
     // push dword [ecx+8]; push dword [ecx+4]; mov ecx, [admin node]; call PlayerLeave; ret
     {"player leave decree", kPlayerLeaveDecreeCall - 0xc, "ff 71 08 ff 71 04 8b 0d ?? ?? ?? ?? e8 ef 47 ff ff c3"},
     // push esi; mov esi, [esp+8] (player); push edi; mov edi, ecx; test esi, esi; jne; push "...invalid player"
@@ -294,6 +305,7 @@ inline constexpr CallSite kCallSites[] = {
     {"GameSave host call -> CreateSaveGameTask", kGameSaveHostCall, kCreateSaveGameTask},
     {"packet writer -> GetWantedPacketType", kWantedTypeWriteCall, kGetWantedPacketType},
     {"player leave decree -> PlayerLeave", kPlayerLeaveDecreeCall, kPlayerLeave},
+    {"packet reader -> SerializeClientDisconnectRequest", kClientDisconnectRequestCall, kClientDisconnectRequest},
     {"End Mission -> SetMapType issue", kEndMissionSetMapTypeCall, kSetMapTypeIssue},
     {"End Mission -> Launch issue", kEndMissionLaunchCall, kLaunchIssue},
     {"send scheduler -> GetWantedPacketType", kWantedTypeScheduleCall, kGetWantedPacketType},

@@ -2,6 +2,14 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.1.0-beta.12] - unreleased
+
+### Fixed
+- Multiplayer Fixes 0.2.0-dev.13: a player who **quits on purpose** (for example after being defeated) no longer
+  pauses the match and takes everyone back to the lobby; only a crash or a lost connection does. Both reach the
+  host as the same kind of leave (reason 5); a deliberate quit is preceded by the player's own request to leave
+  (`TGC_AdminConn::SerializeClientDisconnectRequest`), which the plugin now notices. Offline tests only so far.
+
 ## [0.1.0-beta.11] - 2026-10-12
 
 ### Added

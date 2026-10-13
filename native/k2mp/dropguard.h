@@ -12,6 +12,9 @@
 // connection down for `vote_after` seconds in a running match; the game then removes the player and the steps below
 // follow.
 //
+// A player who quits on purpose is left alone, as the game does without the plugin: their game asks the host to let
+// them go first (SerializeClientDisconnectRequest), and a leave that follows such a request within 3 s is not a drop.
+//
 // Then, on the original host's game (lobby step): once "MP Resume" is written, it takes everyone back to the lobby
 // with the game's own "End Mission" (still connected), and selects "MP Resume" there as "Load saved game" would. The
 // lobby accepts joins, so the player who dropped can join again and get the save (fast transfers), and the host
@@ -53,6 +56,9 @@ bool ConnectionDown(const uint8_t* netNode);
 // For test/hooktest.cpp.
 namespace testing {
 void* Hook();
+void* DisconnectRequestHook();
+void RouteDisconnectRequest(uintptr_t original);
+bool LeftOnPurposeNow();  // a disconnect request was seen in the last 3 s
 void Route(uintptr_t original);
 long Pending();  // leaves seen and not yet handled by Tick
 }  // namespace testing
