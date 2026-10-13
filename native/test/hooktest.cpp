@@ -11,6 +11,7 @@
 #include <cstring>
 
 #include "../k2mp/autosave.h"
+#include "../k2mp/dropguard.h"
 #include "../k2mp/fastsend.h"
 #include "../k2mp/game.h"
 #include "../k2mp/hook.h"
@@ -348,6 +349,46 @@ void TestAutosaveState() {
           "autosave: nothing before the game's objects exist");
 }
 
+
+// pause on drop: the hook passes the leave on unchanged, then notes it; HostOfRunningMatch allows backup mode.
+volatile int g_leaveCalls = 0;
+void* volatile g_leaveAdmin = nullptr;
+void* volatile g_leavePlayer = nullptr;
+volatile int g_leaveReason = 0;
+void __fastcall FakePlayerLeave(void* admin, void*, void* player, int reason) {
+    ++g_leaveCalls;
+    g_leaveAdmin = admin;
+    g_leavePlayer = player;
+    g_leaveReason = reason;
+}
+
+void TestDropGuard() {
+    using Fn = void(__fastcall*)(void*, void*, void*, int);
+    const auto hookFn = reinterpret_cast<Fn>(dropguard::testing::Hook());
+    dropguard::testing::Route(reinterpret_cast<uintptr_t>(&FakePlayerLeave));
+    int admin = 0, player = 0;
+    hookFn(&admin, nullptr, &player, 7);
+    Check(g_leaveCalls == 1 && g_leaveAdmin == &admin && g_leavePlayer == &player && g_leaveReason == 7,
+          "drop: the game's PlayerLeave gets the same admin node, player and reason");
+    Check(dropguard::testing::Pending() == 1, "drop: a real player's leave is noted for the tick");
+    hookFn(&admin, nullptr, nullptr, 0);
+    Check(g_leaveCalls == 2 && dropguard::testing::Pending() == 1, "drop: a leave with no player is passed on, not noted");
+
+    alignas(16) static uint8_t a[0x400], session[0x200];
+    memset(a, 0, sizeof(a));
+    memset(session, 0, sizeof(session));
+    Put<void*>(a, game::kAdminServer, a);
+    Put<int>(session, game::kSessionState, 2);
+    Check(dropguard::HostOfRunningMatch(a, session), "drop: host of a running match");
+    a[game::kAdminBackupMode] = 1;
+    Check(dropguard::HostOfRunningMatch(a, session), "drop: also the player who took over from a lost host (backup mode)");
+    Put<int>(session, game::kSessionState, 1);
+    Check(!dropguard::HostOfRunningMatch(a, session), "drop: nothing for a leave from the lobby");
+    Put<int>(session, game::kSessionState, 4);
+    Put<void*>(a, game::kAdminServer, session);
+    Check(!dropguard::HostOfRunningMatch(a, session), "drop: never on a PC that is not the host");
+}
+
 }  // namespace
 
 int main() {
@@ -359,6 +400,7 @@ int main() {
     TestHostStub();
     TestFastSend();
     TestAutosaveState();
+    TestDropGuard();
     std::printf("%d failure(s)\n", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -5,7 +5,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>k2mod</AssemblyName>
     <RootNamespace>K2ModCli</RootNamespace>
-    <Version>0.1.0-beta.10</Version>
+    <Version>0.1.0-beta.11</Version>
     <Product>Kohan II Mod Manager</Product>
     <Copyright>Copyright (c) 2026 Ensrick. MIT License.</Copyright>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>

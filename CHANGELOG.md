@@ -2,7 +2,23 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [0.1.0-beta.10] - unreleased
+## [0.1.0-beta.11] - unreleased
+
+### Added
+- Multiplayer Fixes 0.2.0-dev.7, **pause on drop** (`pause_on_drop`, on by default): when a player leaves a
+  running match (crash, lost connection or quitting), the host saves the match as "MP Resume" and pauses it for
+  everyone; after a host crash the player who takes over does it. Before, the game gave the leaver's kingdom to the
+  AI and played on. Test rig: both cases saved and paused.
+- Test rig: `-Scenario Drop` (`-DropWho Client|Host`, `-DropAfter`): kills one copy mid-match, starts a dropped
+  client again and has it join; `-Clients 2` for three copies (host and two clients); the rig stops its own copies
+  if they are still running at the end.
+
+### Found
+- A dropped player can never come back today: the host's game refuses "Game is already in progress" while a match
+  runs, and the game has no way to add a human player mid-match. Host takeover after a host crash works with two
+  players on the rig. Details in `docs/MULTIPLAYER.md`.
+
+## [0.1.0-beta.10] - 2026-10-12
 
 ### Fixed
 - **A player left in the lobby when the host's game goes away no longer crashes** (Multiplayer Fixes 0.2.0-dev.6,

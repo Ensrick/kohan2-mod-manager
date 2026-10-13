@@ -95,6 +95,12 @@ constexpr uint32_t kConnNetConn = 0x42c;     // its TGC_NetConn
 constexpr uint32_t kNetConnLastSend = 0x90;  // float: network clock when it last sent a packet
 constexpr uint32_t kNetNodeClock = 0x50;     // float: network clock, seconds
 
+// TGC_AdminNode::PlayerLeave (thiscall, admin node; player, reason; ret 8): a player left the session. The decree that
+// carries a leave (0x556adf) calls it on every PC: `push [ecx+8]; push [ecx+4]; mov ecx, [admin node]; call`. In a
+// running match the game then gives the leaver's kingdom to the AI and plays on.
+constexpr uint32_t kPlayerLeave = 0x14b2df;
+constexpr uint32_t kPlayerLeaveDecreeCall = 0x156aeb;
+
 // TGC_NetNode::OnReceiveError (0x55b5d8): `mov eax, [session]; add esp, 0x14; test eax, eax; je; cmp dword [eax+0xf0],
 // 0`. Every function the game calls with ECX = [session] lies in KKC_Session's code (0x561000-0x570000).
 constexpr uint32_t kSessionRead = 0x15b643;
@@ -200,6 +206,10 @@ inline constexpr Signature kSignatures[] = {
     // cmp dword [edi+0x3c], 2; jne; push ebx; lea ebx, [edi+0x3b4] (the file sender)
     {"TGC_AdminConn::UpdateFileTransferStatus", kUpdateFileTransferStatus + 0x10,
      "83 7f 3c 02 0f 85 bb 00 00 00 53 8d 9f b4 03 00 00"},
+    // push dword [ecx+8]; push dword [ecx+4]; mov ecx, [admin node]; call PlayerLeave; ret
+    {"player leave decree", kPlayerLeaveDecreeCall - 0xc, "ff 71 08 ff 71 04 8b 0d ?? ?? ?? ?? e8 ef 47 ff ff c3"},
+    // push esi; mov esi, [esp+8] (player); push edi; mov edi, ecx; test esi, esi; jne; push "...invalid player"
+    {"TGC_AdminNode::PlayerLeave", kPlayerLeave, "56 8b 74 24 08 57 8b f9 85 f6 75 23 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? 68 bd 0c 00 00"},
     // mov eax, [session]; add esp, 0x14; test eax, eax; je; cmp dword [eax+0xf0], 0; je
     {"session read", kSessionRead, "a1 ?? ?? ?? ?? 83 c4 14 85 c0 74 4d 83 b8 f0 00 00 00 00 74 44"},
     // push esi; mov esi, [ecx+0x70]; jmp; mov ecx, [esi]; call; mov esi, [esi+4]; test esi, esi; jne; pop esi; ret
@@ -239,6 +249,7 @@ inline constexpr CallSite kCallSites[] = {
     {"GameSave client call -> BeginSoloTask", kGameSaveClientCall, kBeginSoloTask},
     {"GameSave host call -> CreateSaveGameTask", kGameSaveHostCall, kCreateSaveGameTask},
     {"packet writer -> GetWantedPacketType", kWantedTypeWriteCall, kGetWantedPacketType},
+    {"player leave decree -> PlayerLeave", kPlayerLeaveDecreeCall, kPlayerLeave},
     {"send scheduler -> GetWantedPacketType", kWantedTypeScheduleCall, kGetWantedPacketType},
     {"join direct IP read -> widget text", kJoinDirectIpRead, kWidgetText},
     {"join direct port read -> widget text", kJoinDirectPortRead, kWidgetText},

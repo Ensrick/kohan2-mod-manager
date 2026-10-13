@@ -81,7 +81,8 @@ needs the sync log of a second player from the same match.
 | 4 | **Fast transfers** (`fast_transfers`): the host sends a save to each player at up to 60 packets/s instead of 10. Only the host needs the plugin; players receive the game's own packets, just more of them. | built, k2mp 0.2.0-dev.4: 8.4x faster on the test rig (below); not yet in an online match |
 | 5 | **Host autosave** (`autosave`): the host saves the match every few minutes, so a crash loses minutes at most. Replaces the script loop of manager beta.2 to beta.8, which could crash the game ([MP_AUTOSAVE.md](MP_AUTOSAVE.md)). | built, k2mp 0.2.0-dev.5: saves on the test rig; not yet in an online match |
 | 5b | **No assertion dialogs** (`ignore_asserts`): the game's own `IgnoreAsserts`, so a failed check no longer freezes the game until it crashes (below). | built, k2mp 0.2.0-dev.5 |
-| 6 | **Rejoin a running match** after a drop. | planned |
+| 6 | **Pause on drop** (`pause_on_drop`): when a player leaves a running match, the host saves "MP Resume" and pauses it for everyone (after a host crash: the player who takes over). | built, k2mp 0.2.0-dev.7: both cases on the test rig (below) |
+| 6b | **Rejoin a running match** after a drop: back to the lobby with "MP Resume" selected, the dropped player joins, everyone relaunches. | in progress |
 | 7 | **Desync cause** of the early desyncs. | needs a second player's sync log |
 
 ## Save copies: first real match (test rig, 2026-10-12)
@@ -146,6 +147,29 @@ how many packets went early.
 24 KB/s per player receiving a save at the same time, comfortably inside any current home connection; 120 is tested
 and can be set in `Mods\k2mp.ini`. Larger packets (the receivers take up to 4,096 bytes: `TGC_WSSocket::Receive`
 0x571484 and `TGC_SteamSock::Update` 0x4804b8) would add more; not done.
+
+## A player drops mid-match (test rig, 2026-10-12)
+
+`Run-Rig.ps1 -Scenario Drop`: two copies in a match; about two minutes in, the rig kills one (like a crash).
+
+- **A client drops:** the host's game times the connection out (`TGC_AdminConn::Update` 0x54f9a5: 2 s without a
+  packet from a client, 3 s from the server), logs "RigClient quit the game", gives that kingdom to the AI ("AI
+  taken over by ...") and plays on: no pause. The client, started again, joins and is refused: "Game is already in
+  progress" (`TGC_AdminConn::SerializeConnect` refuses in session states 2 and 4).
+- **The host drops:** the client times it out, becomes the server ("RigClient has taken over as host", backup mode
+  from then on: `AdminNode::SetBackupMode(1)` and never back), gives the host's kingdom to the AI and plays on. With
+  two players the takeover works; on the 2026-10-11 evening with eight it did not (a three-copy rig run is next).
+- **With `pause_on_drop` (k2mp 0.2.0-dev.7):** in both cases the remaining host's plugin sees the leave
+  (`TGC_AdminNode::PlayerLeave` 0x54b2df, called by the leave decree at 0x556aeb), then runs the game's own
+  `GameSave "Save/MP Resume.RSG"` and `GamePause 1` on the game's thread: "Game Saved: 'Save/MP Resume.RSG'"
+  (226 KB) and "RigHost has paused the game", also from the player who had just taken over as host.
+
+The game has no way to add a player to a running match (the only mid-game player creation,
+`KKC_MidgameCreateAIsAndSessionPlayersOrder`, makes AI players). It does have the host's "End Mission" / "Abort
+Mission" (0x4c3e7e), which takes every connected PC back to the lobby (`KKC_SetNewStateOrder` 1, map type 4,
+`KKC_LaunchOrder`) without disconnecting anyone, and lobbies accept joins. That is the way back in for a dropped
+player: the match is saved, everyone returns to the lobby with the save selected, the dropped player joins, and the
+host launches again.
 
 ## Game bug: a player still in the lobby crashes when the host leaves
 

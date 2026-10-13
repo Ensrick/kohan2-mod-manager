@@ -6,11 +6,13 @@
 //   fast_transfers  the host sends saved games to players several times faster (fastsend.h)
 //   ignore_asserts  the game's assertion dialogs no longer stop it: a failed check is logged, the game goes on
 //   autosave        the host saves a multiplayer match every few minutes (autosave.h; off unless set)
+//   pause_on_drop   when a player leaves a running match, the host saves "MP Resume" and pauses (dropguard.h)
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
 
 #include "autosave.h"
+#include "dropguard.h"
 #include "fastsend.h"
 #include "game.h"
 #include "hook.h"
@@ -106,6 +108,14 @@ extern "C" __declspec(dllexport) int __cdecl K2Plugin_Start(const K2Host* host) 
 
     if (scripts && autosave::Install(host->exeBase)) ++on;
 
+    if (!k2mp::Setting(L"pause_on_drop", true))
+        k2mp::Log("pause on drop: off in Mods\\k2mp.ini");
+    else if (scripts && dropguard::Install(host->exeBase)) {
+        k2mp::Log("pause on drop: on (when a player leaves a running match, the host saves \"MP Resume\" and pauses)");
+        ++on;
+    } else
+        k2mp::Log("pause on drop: not available for this k2.exe");
+
     if (transfer::Install(host->exeBase)) {  // experimental: only with [transfer] keys in Mods\k2mp.ini
         k2mp::Log("transfer settings: configured (applied on the game's thread once its settings table is built)");
         ++on;
@@ -122,6 +132,7 @@ extern "C" __declspec(dllexport) void __cdecl K2Plugin_Tick() {
         k2mp::Log("ignore asserts: IgnoreAsserts queued");
     }
     autosave::Tick();
+    dropguard::Tick();
     transfer::Tick();
 }
 

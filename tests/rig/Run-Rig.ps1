@@ -12,6 +12,9 @@
 #                        "MP Autosave A/B", the client's copies, and that only the host's plugin saved.
 #   -Scenario HostLeaves host: LAN lobby, quits once the client is in it. client: join, stay, quit. Checks that the
 #                        client survives the host leaving (the game crashed there about half the time: MULTIPLAYER.md).
+#   -Scenario Drop       host and client in a match; -DropAfter seconds after the client started, the rig kills the
+#                        -DropWho copy (like a crash). A dropped client is started again and tries to join the host.
+#                        Reports what each game logged about it (timeouts, the connection dialog, refusals).
 #
 # Each copy gets its own Documents folder (the test shfolder.dll, K2_RIG_DOCUMENTS) under %LOCALAPPDATA%\Kohan2Rig:
 # a copy of the player's game data (loose mods included, so both load the same data), but its own saves, replays,
@@ -20,13 +23,16 @@
 # Mods\rig\ scripts; its Logs folder (the game keeps only about ten logs) is copied aside first.
 # Never run this while someone is playing.
 param(
-    [ValidateSet('SaveCopy', 'Transfer', 'Autosave', 'HostLeaves')] [string] $Scenario = 'SaveCopy',
+    [ValidateSet('SaveCopy', 'Transfer', 'Autosave', 'HostLeaves', 'Drop')] [string] $Scenario = 'SaveCopy',
     [string] $Game = 'C:\Program Files (x86)\Steam\steamapps\common\Kohan II',
     [int] $Port = 5860,                    # the first port the game tries for a LAN host (5860-5869)
     [int] $LaunchAfter = 90,               # seconds the host waits in its lobby for the client before launching
     [int] $SaveAfter = 60,                 # SaveCopy: seconds into the match before the host saves
     [string] $SaveName = 'Rig Test',
     [int] $AutosaveMinutes = 1,            # Autosave: the loop's interval
+    [ValidateSet('Client', 'Host')] [string] $DropWho = 'Client',  # Drop: which copy the rig kills
+    [int] $DropAfter = 240,
+    [ValidateRange(1, 2)] [int] $Clients = 1,  # a second client (RigClient2, its own Documents) for three-player runs                # Drop: seconds after the client starts (its match runs from about 120)
     [hashtable] $TransferSettings = @{},  # written to Mods\k2mp.ini [transfer] for this run (both copies read it), then removed
     [hashtable] $PluginSettings = @{},    # more of Mods\k2mp.ini for this run: @{ section = @{ key = value } }
     [string[]] $ExtraSettings = @()       # extra lines for both copies' User\UVars.tgi, e.g. 'float NetMaxBandwidthToUnknown = 400000'
@@ -42,6 +48,8 @@ $hostDocs = Join-Path $rigRoot 'HostDocuments'       # the game adds \Kohan2\dat
 $clientDocs = Join-Path $rigRoot 'ClientDocuments'
 $hostSaves = Join-Path $hostDocs 'Kohan2\data\Save'
 $clientSaves = Join-Path $clientDocs 'Kohan2\data\Save'
+$client2Docs = Join-Path $rigRoot 'Client2Documents'
+$client2Saves = Join-Path $client2Docs 'Kohan2\data\Save'
 $shfolderInGame = Join-Path $Game 'shfolder.dll'
 $ini = Join-Path $mods 'k2mp.ini'
 
@@ -96,7 +104,7 @@ if ($ExtraSettings.Count) {
     $rigSettings = $rigSettings.Replace("	flag	FirstRun = false", (@("	flag	FirstRun = false") + ($ExtraSettings | ForEach-Object { "	$_" })) -join "`n")
     "extra settings for both copies: $($ExtraSettings -join '; ')"
 }
-foreach ($d in $hostDocs, $clientDocs) {
+foreach ($d in @($hostDocs, $clientDocs) + @(if ($Clients -ge 2) { $client2Docs })) {
     $data = Join-Path $d 'Kohan2\data'
     robocopy $playerData $data /E /XD Save synclogs Films Screenshots User /NFL /NDL /NJH /NJS /NP | Out-Null
     New-Item -ItemType Directory -Force (Join-Path $data 'User'), (Join-Path $data 'Save') | Out-Null
@@ -104,7 +112,7 @@ foreach ($d in $hostDocs, $clientDocs) {
 }
 # The client starts without any save; SaveCopy also starts the host without the test save. File by file: these
 # folders are the rig's own.
-foreach ($old in Get-ChildItem $clientSaves -Filter '*.RSG') { Remove-Item $old.FullName }
+foreach ($old in Get-ChildItem $clientSaves, $client2Saves -Filter '*.RSG' -ErrorAction SilentlyContinue) { Remove-Item $old.FullName }
 if ($Scenario -eq 'SaveCopy') {
     foreach ($n in "$SaveName.RSG", "$SaveName (copy).RSG") { $p = Join-Path $hostSaves $n; if (Test-Path $p) { Remove-Item $p } }
 }
@@ -119,7 +127,7 @@ RequestMultiplayer
 Wait 3
 RequestLobbyLAN
 Wait 3
-LobbySetLANNickname RigClient
+LobbySetLANNickname __NICK__
 Wait 2
 Echo rig: client joining
 LobbyJoinDirect
@@ -135,7 +143,7 @@ RequestLobbyLAN
 Wait 3
 LobbySetLANNickname RigHost
 Wait 2
-InternetGameCreate RigGame $Port 2
+InternetGameCreate RigGame $Port $(1 + $Clients)
 Wait 3
 "@
 # No WaitState before the main menu: it crashes the game then (README). Wait 45 covers start-up.
@@ -164,6 +172,40 @@ WaitState game
 Echo rig: client in the match
 Wait $($SaveAfter + 90)
 Echo rig: client end
+ReallyQuit
+"@
+} elseif ($Scenario -eq 'Drop') {
+    # No WaitState here: it gives up after about a minute and throws. The rig drops a copy by the clock instead. A
+    # second StagingLaunch covers a client that only became ready after the first one asked everyone to get ready.
+    $hostScript = @"
+Wait 45
+$hostOpen
+SelectLaunchType RANDOM_MAP
+Echo rig: host waiting in its lobby
+Wait $LaunchAfter
+Echo rig: host launching
+StagingLaunch
+Wait 30
+StagingLaunch
+Wait 420
+Echo rig: host end
+ReallyQuit
+"@
+    $clientScript = @"
+Wait 45
+$join
+Echo rig: client in the lobby
+Wait 600
+Echo rig: client end
+ReallyQuit
+"@
+    # The dropped client, started again: joins the host the same way.
+    $rejoinScript = @"
+Wait 45
+$join
+Echo rig: rejoined client waiting
+Wait 150
+Echo rig: rejoined client end
 ReallyQuit
 "@
 } elseif ($Scenario -eq 'HostLeaves') {
@@ -241,7 +283,8 @@ ReallyQuit
 }
 New-Item -ItemType Directory -Force (Join-Path $mods 'rig') | Out-Null
 "# rig host, $Scenario (written by tests/rig/Run-Rig.ps1)`r`n$hostScript" | Set-Content (Join-Path $mods 'rig\host.txt') -Encoding ascii
-"# rig client, $Scenario (written by tests/rig/Run-Rig.ps1)`r`n$clientScript" | Set-Content (Join-Path $mods 'rig\client.txt') -Encoding ascii
+"# rig client, $Scenario (written by tests/rig/Run-Rig.ps1)`r`n$($clientScript.Replace('__NICK__', 'RigClient'))" | Set-Content (Join-Path $mods 'rig\client.txt') -Encoding ascii
+"# rig client 2, $Scenario (written by tests/rig/Run-Rig.ps1)`r`n$($clientScript.Replace('__NICK__', 'RigClient2'))" | Set-Content (Join-Path $mods 'rig\client2.txt') -Encoding ascii
 
 foreach ($f in Get-ChildItem $mods -Filter 'plugins*.log') { Remove-Item $f.FullName }
 if ($iniSections.Count) {
@@ -256,6 +299,7 @@ Copy-Item $rigShfolder $shfolderInGame -Force
 $runLimit = switch ($Scenario) {
     'Autosave' { $LaunchAfter + $AutosaveMinutes * 120 + 300 }
     'HostLeaves' { 420 }
+    'Drop' { $DropAfter + 420 }
     default { $LaunchAfter + $SaveAfter + 300 }
 }
 
@@ -279,7 +323,7 @@ function Current-Length($path) {
     try { $fs = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite, Delete'); $n = $fs.Length; $fs.Dispose(); $n } catch { 0 }
 }
 
-$hostPid = $clientPid = $null
+$hostPid = $clientPid = $client2Pid = $null
 $firstSeen = $complete = $lastGrew = $arriving = $hostCopy = $null
 $want = 0; $lastSize = -1
 try {
@@ -299,9 +343,17 @@ try {
     $clientPid = & $start -Game $Game -Arguments '+Exec Mods/rig/client.txt' -Env @{ K2MP_RIG_JOIN = "127.0.0.1:$Port"; K2_RIG_DOCUMENTS = $clientDocs }
     $clientLog = Wait-NewLog $known 60
     "client: process $clientPid, log $(Split-Path $clientLog -Leaf)"
+    $client2Pid = $null; $client2Log = $null
+    if ($Clients -ge 2) {
+        $known = Log-Names
+        $client2Pid = & $start -Game $Game -Arguments '+Exec Mods/rig/client2.txt' -Env @{ K2MP_RIG_JOIN = "127.0.0.1:$Port"; K2_RIG_DOCUMENTS = $client2Docs }
+        $client2Log = Wait-NewLog $known 60
+        "client 2: process $client2Pid, log $(Split-Path $client2Log -Leaf)"
+    }
 
     $t0 = Get-Date
-    while ((Get-Process -Id $hostPid, $clientPid -ErrorAction SilentlyContinue) -and ((Get-Date) - $t0).TotalSeconds -lt $runLimit) {
+    $dropped = $null; $rejoinPid = $null; $rejoinLog = $null
+    while ((Get-Process -Id (@($hostPid, $clientPid, $client2Pid, $rejoinPid) | Where-Object { $_ }) -ErrorAction SilentlyContinue) -and ((Get-Date) - $t0).TotalSeconds -lt $runLimit) {
         if ($Scenario -eq 'Transfer') {
             if (-not $arriving) {
                 $new = Get-ChildItem $clientSaves -Filter '*.RSG' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -316,17 +368,39 @@ try {
                 if ($want -gt 0 -and $size -ge $want) { $complete = Get-Date; "transfer: complete after $([math]::Round(($complete - $firstSeen).TotalSeconds, 1)) s" }
             }
         }
+        if ($Scenario -eq 'Drop' -and -not $dropped -and ((Get-Date) - $t0).TotalSeconds -ge $DropAfter) {
+            $victim = if ($DropWho -eq 'Host') { $hostPid } else { $clientPid }
+            Stop-Process -Id $victim -Force -ErrorAction SilentlyContinue
+            $dropped = Get-Date
+            "drop: killed the $($DropWho.ToLower()) (process $victim) $([math]::Round(($dropped - $t0).TotalSeconds)) s after the client started"
+        }
+        if ($Scenario -eq 'Drop' -and $DropWho -eq 'Client' -and $dropped -and -not $rejoinPid -and ((Get-Date) - $dropped).TotalSeconds -ge 20) {
+            "# rig rejoining client (written by tests/rig/Run-Rig.ps1)`r`n$($rejoinScript.Replace('__NICK__', 'RigClient'))" | Set-Content (Join-Path $mods 'rig\rejoin.txt') -Encoding ascii
+            $known = Log-Names
+            $rejoinPid = & $start -Game $Game -Arguments '+Exec Mods/rig/rejoin.txt' -Env @{ K2MP_RIG_JOIN = "127.0.0.1:$Port"; K2_RIG_DOCUMENTS = $clientDocs }
+            $rejoinLog = Wait-NewLog $known 60
+            "drop: client started again (process $rejoinPid, log $(Split-Path $rejoinLog -Leaf))"
+        }
         Start-Sleep -Milliseconds 250
     }
-    $left = Get-Process -Id $hostPid, $clientPid -ErrorAction SilentlyContinue
+    $left = Get-Process -Id (@($hostPid, $clientPid, $client2Pid) | Where-Object { $_ }) -ErrorAction SilentlyContinue
     if ($left) { "still running after the time limit: $($left.Id -join ', ') (left running for a look)" }
 } finally {
     # a copy can take minutes to close after ReallyQuit (a client that lost its host first times it out); the game folder must not keep the test files
     $exitBy = (Get-Date).AddSeconds(300)
-    $ours = @($hostPid, $clientPid | Where-Object { $_ })
+    $ours = @($hostPid, $clientPid, $client2Pid, $rejoinPid | Where-Object { $_ })
     while ($ours -and (Get-Process -Id $ours -ErrorAction SilentlyContinue) -and (Get-Date) -lt $exitBy) {
         Start-Sleep -Seconds 2
     }
+    # Still running: the rig's own copies only (started by this run, with the rig's script on their command line).
+    foreach ($id in $ours) {
+        $p = Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction SilentlyContinue
+        if ($p -and $p.Name -eq 'k2.exe' -and $p.CommandLine -match 'Mods/rig/\w+\.txt') {
+            Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+            "stopped the rig's copy $id (still running after the wait)"
+        }
+    }
+    Start-Sleep -Seconds 3
     if (-not (Get-Process k2 -ErrorAction SilentlyContinue)) {
         if (Test-Path $shfolderInGame) { Remove-Item $shfolderInGame; "test shfolder.dll removed from the game folder" }
         if ($iniSections.Count -and (Test-Path $ini)) { Remove-Item $ini }
@@ -371,6 +445,30 @@ if ($Scenario -eq 'SaveCopy') {
     $pauses = if ($clientLogNow) { @(Select-String -Path $clientLogNow.FullName -Pattern 'NET: GameSave on client' -SimpleMatch).Count } else { 0 }
     "client paused for $pauses host save(s)"
     $checks['client paused for the host''s saves'] = $pauses -ge 2
+} elseif ($Scenario -eq 'Drop') {
+    $pattern = 'Timeout\(\)|CSD|lagging|Lagging|Vote|PlayerLeave\(\)|ClientLeave|already in progress|Rejected|refus|SetFrozen|taken over|BackupMode|backup mode|Becoming server|has joined|quit the game|Waiting|waiting for|GamePause|Paused|paused|Pause|GameSave|MP Resume|ASSERT|exception|rig: '
+    foreach ($pair in @(@('host', $hostLog), @('client', $clientLog), @('client 2', $client2Log), @('rejoined client', $rejoinLog))) {
+        if (-not $pair[1]) { continue }
+        $f = Final-Log $pair[1]
+        if (-not $f) { $f = Get-Item $pair[1] -ErrorAction SilentlyContinue }
+        if (-not $f) { continue }
+        "--- $($pair[0]) ($($f.Name))"
+        Select-String -Path $f.FullName -Pattern $pattern | Where-Object { $_.Line -notmatch 'called with invalid player|^: \[time [0-9.]+\] \(' } |
+            Select-Object -First 60 | ForEach-Object { '{0,6}: {1}' -f $_.LineNumber, $_.Line.Trim().Substring(0, [Math]::Min(170, $_.Line.Trim().Length)) }
+    }
+    $checks['the rig dropped a copy'] = [bool]$dropped
+    # pause on drop: the host's plugin (after a host drop: the client's, which took over) saved "MP Resume"
+    # pause on drop: the host's plugin (after a host drop: the plugin of the client that took over) saved "MP Resume"
+    $survivors = if ($DropWho -eq 'Host') { @(@('plugins.2.log', $clientSaves), @('plugins.3.log', $client2Saves)) } else { @(, @('plugins.log', $hostSaves)) }
+    $saver = $survivors | Where-Object { Select-String -Path (Join-Path $mods $_[0]) -Pattern 'pause on drop: .* saving "MP Resume"' -Quiet -ErrorAction SilentlyContinue } | Select-Object -First 1
+    $checks['the remaining host''s plugin saved and paused'] = [bool]$saver
+    $resume = if ($saver) { Join-Path $saver[1] 'MP Resume.RSG' } else { '' }
+    $checks['"MP Resume" was written'] = $resume -and (Test-Path $resume) -and ((Get-Item $resume).LastWriteTime -gt $dropped)
+    if ($Clients -ge 2) {
+        $copyDir = if ($DropWho -eq 'Host') { @($clientSaves, $client2Saves) | Where-Object { $_ -ne $saver[1] } } else { $client2Saves }
+        $copy = Join-Path $copyDir 'MP Resume (copy).RSG'
+        $checks['the other remaining player wrote "MP Resume (copy)"'] = (Test-Path $copy) -and ((Get-Item $copy).LastWriteTime -gt $dropped)
+    }
 } elseif ($Scenario -eq 'HostLeaves') {
     $clientLogNow = Final-Log $clientLog
     $text = if ($clientLogNow) { Get-Content $clientLogNow.FullName -Raw } else { '' }
